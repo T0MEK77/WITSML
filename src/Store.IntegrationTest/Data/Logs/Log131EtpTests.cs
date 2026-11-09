@@ -251,7 +251,7 @@ namespace PDS.WITSMLstudio.Store.Data.Logs
             var originalAuthorizationEnabled = WitsmlSettings.IsUserAuthorizationEnabled;
             var originalAdapters = authorizationProvider.UserAuthorizationAdapters;
             var requestUuid = System.Guid.NewGuid();
-            Energistics.Etp.IEtpClient otherClient = null;
+            IEtpClient otherClient = null;
 
             try
             {
