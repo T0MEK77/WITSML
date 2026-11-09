@@ -71,9 +71,9 @@ namespace PDS.WITSMLstudio.Store.Data.Security
                 if (!string.IsNullOrWhiteSpace(current.ObjectId))
                 {
                     var objectType = current.ObjectType ?? string.Empty;
-                    var resourceType = objectType.IndexOf("wellbore", StringComparison.OrdinalIgnoreCase) >= 0
+                    var resourceType = string.Equals(objectType, "Wellbore", StringComparison.OrdinalIgnoreCase)
                         ? AclResourceType.Wellbore
-                        : objectType.IndexOf("well", StringComparison.OrdinalIgnoreCase) >= 0
+                        : string.Equals(objectType, "Well", StringComparison.OrdinalIgnoreCase)
                             ? AclResourceType.Well
                             : AclResourceType.DataObject;
 
