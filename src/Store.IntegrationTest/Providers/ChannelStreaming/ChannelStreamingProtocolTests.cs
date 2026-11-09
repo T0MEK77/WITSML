@@ -155,7 +155,6 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
                 var metadata = await onChannelMetadata;
                 var channels = VerifyChannelMetadata(metadata, new List<string> { uri }, describeMessageId);
                 var onChannelData = HandleMultiPartAsync<ChannelData>(x => handler.OnChannelData += x, 1);
-                var onProtocolException = HandleAsync<IProtocolException>(x => handler.OnProtocolException += x);
 
                 handler.ChannelStreamingStart(new List<ChannelStreamingInfo>
                 {
