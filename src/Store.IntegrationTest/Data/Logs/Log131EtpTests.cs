@@ -17,6 +17,11 @@
 //-----------------------------------------------------------------------
 
 using System.Threading.Tasks;
+using System.Collections.Generic;
+using Energistics.Etp.Common;
+using Energistics.Etp.v11.Protocol.GrowingObject;
+using PDS.WITSMLstudio.Store.Configuration;
+using PDS.WITSMLstudio.Store.Data.Security;
 using Energistics.DataAccess.WITSML131;
 using Energistics.DataAccess.WITSML131.ReferenceData;
 using Energistics.Etp.v11.Protocol.Store;
@@ -30,6 +35,66 @@ namespace PDS.WITSMLstudio.Store.Data.Logs
     /// </summary>
     public partial class Log131EtpTests
     {
+        [TestMethod]
+        public async Task Log131_GrowingObjectGet_Denies_Explicit_Read_Deny()
+        {
+            AddParents();
+            DevKit.AddAndAssert<LogList, Log>(Log);
+
+            var aclRuleStore = DevKit.Container.Resolve<IAclRuleStore>();
+            var authorizationProvider = DevKit.Container.Resolve<IUserAuthorizationProvider>() as UserAuthorizationProvider;
+            Assert.IsNotNull(authorizationProvider);
+
+            var originalAuthorizationEnabled = WitsmlSettings.IsUserAuthorizationEnabled;
+            var originalAdapters = authorizationProvider.UserAuthorizationAdapters;
+            var username = TestSettings.Username;
+
+            var denyRule = new AclRule
+            {
+                Username = username,
+                ResourceId = Log.Uid,
+                ResourceType = AclResourceType.DataObject,
+                Action = AclAction.Read,
+                Effect = AclEffect.Deny
+            };
+
+            try
+            {
+                authorizationProvider.UserAuthorizationAdapters = new List<IUserAuthorizationAdapter>
+                {
+                    new AllowEndpointAuthorizationAdapter()
+                };
+                WitsmlSettings.IsUserAuthorizationEnabled = true;
+                aclRuleStore.Save(denyRule);
+
+                await RequestSessionAndAssert();
+
+                var handler = _client.Handler<IGrowingObjectCustomer>();
+                var onProtocolException = HandleAsync<IProtocolException>(
+                    x => handler.OnProtocolException += x);
+
+                handler.GrowingObjectGet(Log.GetUri().ToString(), "missing-part");
+
+                var exception = await onProtocolException;
+                Assert.IsNotNull(exception?.Message);
+                Assert.AreEqual((int)ErrorCodes.InsufficientOperationRights, exception.Message.ErrorCode);
+            }
+            finally
+            {
+                aclRuleStore.Delete(username, Log.Uid, AclResourceType.DataObject, AclAction.Read);
+                WitsmlSettings.IsUserAuthorizationEnabled = originalAuthorizationEnabled;
+                authorizationProvider.UserAuthorizationAdapters = originalAdapters;
+            }
+        }
+
+        private sealed class AllowEndpointAuthorizationAdapter : IUserAuthorizationAdapter
+        {
+            public bool IsAuthorized(string username, RequestContext request, WitsmlEndpointTypes endpointType)
+            {
+                return true;
+            }
+        }
+
         [TestMethod, Description("Tests that 131 Log Data can be added when Compatibility Setting LogAllowPutObjectWithData is True")]
         public async Task Log131_PutObject_Can_Add_Log_Data_With_LogAllowPutObjectWithData_True()
         {
