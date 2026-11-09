@@ -141,6 +141,13 @@ namespace PDS.WITSMLstudio.Store.Providers.Discovery
             {
                 return;
             }
+
+            // Discovery must not reveal child folders or counts beneath an
+            // unreadable parent, even when the request only asks for metadata.
+            var resourceToCheck = !string.IsNullOrWhiteSpace(etpUri.ObjectId) ? etpUri :
+                (!string.IsNullOrWhiteSpace(parentUri.ObjectId) ? parentUri : null);
+            if (resourceToCheck != null && !IsObjectReadable(resourceToCheck))
+                return;
             if (etpUri.IsBaseUri || (string.IsNullOrWhiteSpace(etpUri.ObjectId) && ObjectTypes.Well.EqualsIgnoreCase(etpUri.ObjectType)))
             {
                 _wellDataProvider.GetAll(etpUri)
@@ -186,6 +193,20 @@ namespace PDS.WITSMLstudio.Store.Providers.Discovery
                 var log = _logDataProvider.Get(etpUri);
                 log?.LogCurveInfo?.ForEach(x => resources.Add(ToResource(etpAdapter, log, x)));
                 serverSortOrder = string.Empty;
+            }
+        }
+
+        private bool IsObjectReadable(EtpUri uri)
+        {
+            try
+            {
+                var provider = _container.Resolve<IEtpDataProvider>(
+                    new ObjectName(uri.ObjectType, uri.Family, uri.Version));
+                return provider.Exists(uri);
+            }
+            catch (WitsmlException)
+            {
+                return false;
             }
         }
 
