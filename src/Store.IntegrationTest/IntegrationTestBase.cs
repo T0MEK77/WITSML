@@ -102,11 +102,15 @@ namespace PDS.WITSMLstudio.Store
             var streaming = container.Resolve<IChannelStreamingProducer>();
             var discovery = container.Resolve<IDiscoveryStore>();
             var store = container.Resolve<IStoreStore>();
+            var growingObject11 = container.Resolve<Energistics.Etp.v11.Protocol.GrowingObject.IGrowingObjectStore>();
+            var growingObject12 = container.Resolve<Energistics.Etp.v12.Protocol.GrowingObject.IGrowingObjectStore>();
 
             // Register server handlers
             _server.Register(() => streaming);
             _server.Register(() => discovery);
             _server.Register(() => store);
+            _server.Register(() => growingObject11);
+            _server.Register(() => growingObject12);
         }
 
         /// <summary>
