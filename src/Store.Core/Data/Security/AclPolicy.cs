@@ -89,10 +89,9 @@ namespace PDS.WITSMLstudio.Store.Data.Security
                 .ToList();
             var allRules = rules.Where(x => x != null).ToList();
 
-            var configured = allRules.Any(rule =>
-                resources.Any(resource =>
-                    string.Equals(resource.Id, rule.ResourceId, StringComparison.OrdinalIgnoreCase)
-                    && resource.Type == rule.ResourceType));
+            // A parent rule scopes descendants only when inheritance is enabled.
+            // A rule attached directly to the requested resource always scopes it.
+            var configured = allRules.Any(rule => IsApplicable(rule, resources));
 
             if (!configured)
                 return new AclDecision { IsAclConfigured = false, IsAllowed = false };
