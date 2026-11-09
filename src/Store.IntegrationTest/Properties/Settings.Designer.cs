@@ -43,7 +43,7 @@ namespace PDS.WITSMLstudio.Store.IntegrationTest {
         
         [global::System.Configuration.ApplicationScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        [global::System.Configuration.DefaultSettingValueAttribute("acl-test-user")]
         public string Username {
             get {
                 return ((string)(this["Username"]));
