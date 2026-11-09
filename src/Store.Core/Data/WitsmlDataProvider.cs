@@ -141,7 +141,7 @@ namespace PDS.WITSMLstudio.Store.Data
         public virtual List<TObject> GetAll(EtpUri? parentUri = null)
         {
             var items = DataAdapter.GetAll(parentUri);
-            return items.Where(item => IsObjectReadable(GetUri(item))).ToList();
+            return items.Where(item => IsObjectReadable(GetUri(item), item)).ToList();
         }
 
         /// <summary>
@@ -370,11 +370,11 @@ namespace PDS.WITSMLstudio.Store.Data
             return value == null ? null : value.ToString();
         }
 
-        protected bool IsObjectReadable(EtpUri uri)
+        protected bool IsObjectReadable(EtpUri uri, TObject dataObject)
         {
             try
             {
-                CheckObjectAccess(AclAction.Read, uri);
+                CheckObjectAccess(WitsmlOperationContext.Current.User, AclAction.Read, uri, dataObject);
                 return true;
             }
             catch (WitsmlException)
