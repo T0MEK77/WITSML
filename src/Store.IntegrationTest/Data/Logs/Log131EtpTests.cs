@@ -175,7 +175,8 @@ namespace PDS.WITSMLstudio.Store.Data.Logs
                     Context = new Energistics.Etp.v12.Datatypes.Object.ContextInfo
                     {
                         Uri = Log.GetUri().ToString(),
-                        Depth = 0
+                        Depth = 0,
+                        ContentTypes = new List<string>()
                     },
                     Scope = Energistics.Etp.v12.Datatypes.Object.ContextScopeKind.self,
                     IncludeObjectData = true,
@@ -266,7 +267,8 @@ namespace PDS.WITSMLstudio.Store.Data.Logs
                     Context = new Energistics.Etp.v12.Datatypes.Object.ContextInfo
                     {
                         Uri = Log.GetUri().ToString(),
-                        Depth = 0
+                        Depth = 0,
+                        ContentTypes = new List<string>()
                     },
                     Scope = Energistics.Etp.v12.Datatypes.Object.ContextScopeKind.self,
                     IncludeObjectData = true,
