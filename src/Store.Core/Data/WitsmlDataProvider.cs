@@ -444,7 +444,7 @@ namespace PDS.WITSMLstudio.Store.Data
 
                 SetDefaultValues(dataObject);
                 var uri = GetUri(dataObject);
-                WitsmlOperationContext.Current.DataObject = (IDataObject)dataObject;
+                WitsmlOperationContext.Current.DataObject = dataObject as IDataObject;
                 CheckObjectAccess(AclAction.Create, uri);
                 transaction.SetContext(uri);
                 Logger.DebugFormat("Adding {0} with URI '{1}'", typeof(TObject).Name, uri);
@@ -479,7 +479,7 @@ namespace PDS.WITSMLstudio.Store.Data
 
                 UpdateDefaultValues(dataObject, parser);
                 var uri = GetUri(dataObject);
-                WitsmlOperationContext.Current.DataObject = (IDataObject)dataObject;
+                WitsmlOperationContext.Current.DataObject = dataObject as IDataObject;
                 CheckUpdateAccess(uri, dataObject);
                 transaction.SetContext(uri);
                 Logger.DebugFormat("Updating {0} with URI '{1}'", typeof(TObject).Name, uri);
@@ -518,7 +518,7 @@ namespace PDS.WITSMLstudio.Store.Data
                 // Replace can change the Well/Wellbore references of a WITSML 2.0
                 // object. Resolve ACL ancestry from the parsed replacement, not
                 // from the stale object retained in the operation context.
-                WitsmlOperationContext.Current.DataObject = (IDataObject)dataObject;
+                WitsmlOperationContext.Current.DataObject = dataObject as IDataObject;
                 CheckUpdateAccess(uri, dataObject);
 
                 transaction.SetContext(uri);
@@ -553,7 +553,7 @@ namespace PDS.WITSMLstudio.Store.Data
                 var dataObject = Parse(element);
 
                 var uri = GetUri(dataObject);
-                WitsmlOperationContext.Current.DataObject = (IDataObject)dataObject;
+                WitsmlOperationContext.Current.DataObject = dataObject as IDataObject;
                 CheckObjectAccess(AclAction.Delete, uri);
                 transaction.SetContext(uri);
                 Logger.DebugFormat("Deleting {0} with URI '{1}'", typeof(TObject).Name, uri);
