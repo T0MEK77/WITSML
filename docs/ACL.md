@@ -72,4 +72,4 @@ db.AclRules.replaceOne(
 
 ## Hierarchy scope
 
-The resolver follows the canonical ETP URI parent chain, ordered from the requested object to its Wellbore and Well ancestors. This supports the hierarchical WITSML 1.3.1/1.4.1 URIs. WITSML 2.0 Well, Wellbore and Log URIs in this codebase are flat (for example, `eml://witsml20/Log(uuid)`); their Well/Wellbore links are stored in data-object references, not in URI path segments. Direct DataObject ACL rules work for those flat URIs, but Well/Wellbore inheritance for WITSML 2.0 still requires resolving those stored references and is not complete yet.
+For WITSML 1.3.1/1.4.1, the resolver follows the hierarchical ETP URI chain. For WITSML 2.0 flat object URIs, the Store resolves the stored object's `Wellbore` or direct `Well` data-object reference. When a Wellbore reference is present, it loads the referenced Wellbore and resolves its `Well` reference. This produces the effective DataObject → Wellbore → Well hierarchy for those object types whose persisted model exposes these standard references. Object types without a Well/Wellbore reference can only inherit from hierarchy levels available in their URI.
