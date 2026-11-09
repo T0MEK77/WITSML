@@ -17,14 +17,19 @@ namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
         private static readonly Dictionary<string, string> Owners =
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-        public static void Register(string key, string owner)
+        public static bool TryRegister(string key, string owner)
         {
             if (string.IsNullOrWhiteSpace(key)) throw new ArgumentException("Subscription key is required.", nameof(key));
             if (string.IsNullOrWhiteSpace(owner)) throw new ArgumentException("Subscription owner is required.", nameof(owner));
 
             lock (SyncRoot)
             {
-                Owners[key] = owner;
+                string existingOwner;
+                if (Owners.TryGetValue(key, out existingOwner))
+                    return string.Equals(existingOwner, owner, StringComparison.OrdinalIgnoreCase);
+
+                Owners.Add(key, owner);
+                return true;
             }
         }
 

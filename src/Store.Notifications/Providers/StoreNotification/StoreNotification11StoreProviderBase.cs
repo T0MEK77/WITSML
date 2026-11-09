@@ -89,9 +89,15 @@ namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
             }
             else
             {
+                var username = WitsmlOperationContext.Current.User;
+                if (!StoreNotificationSubscriptionOwnerRegistry.TryRegister(GetSubscriptionRegistryKey(request.Request.Uuid), username))
+                {
+                    ProtocolException((int)ErrorCodes.InsufficientOperationRights, "The subscription identifier is already owned by another user.", header.MessageId);
+                    return;
+                }
+
                 _headers[request.Request.Uuid] = header;
-                _subscribers[request.Request.Uuid] = WitsmlOperationContext.Current.User;
-                StoreNotificationSubscriptionOwnerRegistry.Register(GetSubscriptionRegistryKey(request.Request.Uuid), WitsmlOperationContext.Current.User);
+                _subscribers[request.Request.Uuid] = username;
                 _requests.Add(request);
             }
         

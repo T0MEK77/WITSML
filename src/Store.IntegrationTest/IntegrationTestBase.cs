@@ -101,36 +101,24 @@ namespace PDS.WITSMLstudio.Store
             _server = CreateServer(port);
             _client = InitClient(CreateClient(url));
 
-            // Resolve and register protocol handlers for the negotiated ETP version.
-            // ETP 1.1 and 1.2 reuse protocol numbers, so their handlers must not
-            // coexist in one EtpSession (the DevKit routes messages by protocol number).
+            // Register factories that resolve a fresh NonShared provider for each
+            // ETP session. Returning a provider captured here would reuse its Session
+            // property and per-session state across different authenticated clients.
             if (string.Equals(TestSettings.EtpVersion, "1.2", StringComparison.Ordinal))
             {
-                var streaming = container.Resolve<Energistics.Etp.v12.Protocol.ChannelStreaming.IChannelStreamingProducer>();
-                var discovery = container.Resolve<Energistics.Etp.v12.Protocol.Discovery.IDiscoveryStore>();
-                var store = container.Resolve<Energistics.Etp.v12.Protocol.Store.IStoreStore>();
-                var growingObject = container.Resolve<Energistics.Etp.v12.Protocol.GrowingObject.IGrowingObjectStore>();
-                var storeNotification = container.Resolve<Energistics.Etp.v12.Protocol.StoreNotification.IStoreNotificationStore>();
-
-                _server.Register(() => streaming);
-                _server.Register(() => discovery);
-                _server.Register(() => store);
-                _server.Register(() => growingObject);
-                _server.Register(() => storeNotification);
+                _server.Register(() => container.Resolve<Energistics.Etp.v12.Protocol.ChannelStreaming.IChannelStreamingProducer>());
+                _server.Register(() => container.Resolve<Energistics.Etp.v12.Protocol.Discovery.IDiscoveryStore>());
+                _server.Register(() => container.Resolve<Energistics.Etp.v12.Protocol.Store.IStoreStore>());
+                _server.Register(() => container.Resolve<Energistics.Etp.v12.Protocol.GrowingObject.IGrowingObjectStore>());
+                _server.Register(() => container.Resolve<Energistics.Etp.v12.Protocol.StoreNotification.IStoreNotificationStore>());
             }
             else
             {
-                var streaming = container.Resolve<Energistics.Etp.v11.Protocol.ChannelStreaming.IChannelStreamingProducer>();
-                var discovery = container.Resolve<Energistics.Etp.v11.Protocol.Discovery.IDiscoveryStore>();
-                var store = container.Resolve<Energistics.Etp.v11.Protocol.Store.IStoreStore>();
-                var growingObject = container.Resolve<Energistics.Etp.v11.Protocol.GrowingObject.IGrowingObjectStore>();
-                var storeNotification = container.Resolve<Energistics.Etp.v11.Protocol.StoreNotification.IStoreNotificationStore>();
-
-                _server.Register(() => streaming);
-                _server.Register(() => discovery);
-                _server.Register(() => store);
-                _server.Register(() => growingObject);
-                _server.Register(() => storeNotification);
+                _server.Register(() => container.Resolve<Energistics.Etp.v11.Protocol.ChannelStreaming.IChannelStreamingProducer>());
+                _server.Register(() => container.Resolve<Energistics.Etp.v11.Protocol.Discovery.IDiscoveryStore>());
+                _server.Register(() => container.Resolve<Energistics.Etp.v11.Protocol.Store.IStoreStore>());
+                _server.Register(() => container.Resolve<Energistics.Etp.v11.Protocol.GrowingObject.IGrowingObjectStore>());
+                _server.Register(() => container.Resolve<Energistics.Etp.v11.Protocol.StoreNotification.IStoreNotificationStore>());
             }
         }
 
