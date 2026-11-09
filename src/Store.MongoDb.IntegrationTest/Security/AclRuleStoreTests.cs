@@ -100,10 +100,10 @@ namespace PDS.WITSMLstudio.Store.Security
                 });
             });
 
-            var result = _store.GetRules(new[] { _resourceId })
-                .FindAll(x => x.Username == "acl-concurrent-user");
+            var result = _store.GetRules(new[] { _resourceId });
 
             Assert.AreEqual(1, result.Count);
+            Assert.AreEqual("acl-concurrent-user", result[0].Username);
         }
 
         [TestMethod]
