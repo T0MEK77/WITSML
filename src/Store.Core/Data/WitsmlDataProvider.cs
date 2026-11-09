@@ -260,42 +260,7 @@ namespace PDS.WITSMLstudio.Store.Data
         protected void CheckObjectAccess(AclAction action, EtpUri uri)
         {
             var authorization = Container.Resolve<IUserAuthorizationProvider>();
-            authorization.CheckObjectAccess(action, GetAclHierarchy(uri));
-        }
-
-        /// <summary>
-        /// Builds the resource chain from the concrete object through its
-        /// Wellbore and Well ancestors. EtpUri.Parent is the canonical ETP
-        /// relationship and avoids trusting parent identifiers supplied
-        /// separately by a client.
-        /// </summary>
-        private static IList<AclResource> GetAclHierarchy(EtpUri uri)
-        {
-            var resources = new List<AclResource>();
-            var current = uri;
-
-            while (current != null && !current.IsBaseUri)
-            {
-                if (!string.IsNullOrWhiteSpace(current.ObjectId))
-                {
-                    var objectType = (current.ObjectType ?? string.Empty).ToString();
-                    var resourceType = objectType.IndexOf("wellbore", StringComparison.OrdinalIgnoreCase) >= 0
-                        ? AclResourceType.Wellbore
-                        : objectType.IndexOf("well", StringComparison.OrdinalIgnoreCase) >= 0
-                            ? AclResourceType.Well
-                            : AclResourceType.DataObject;
-
-                    resources.Add(new AclResource
-                    {
-                        Id = current.ObjectId,
-                        Type = resourceType
-                    });
-                }
-
-                current = current.Parent;
-            }
-
-            return resources;
+            authorization.CheckObjectAccess(action, AclResourceHierarchy.FromUri(uri));
         }
 
         protected bool IsObjectReadable(EtpUri uri)
