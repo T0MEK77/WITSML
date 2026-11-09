@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using Energistics.Etp;
 using Energistics.Etp.Common;
 using Energistics.Etp.Common.Protocol.Core;
+using Energistics.Etp.v11;
 using Energistics.Etp.v11.Protocol.Core;
 using Energistics.Etp.v11.Protocol.GrowingObject;
 using GrowingObject12Customer = Energistics.Etp.v12.Protocol.GrowingObject.IGrowingObjectCustomer;
