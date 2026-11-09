@@ -69,6 +69,8 @@ namespace PDS.WITSMLstudio.Store.Providers.GrowingObject
 
             IDataObject dataObject;
 
+            CheckObjectAccess(uri, AclAction.Read);
+
             try
             {
                 dataObject = dataAdapter.GetGrowingPart(Session.Adapter, uri, message.Uid);
@@ -103,6 +105,8 @@ namespace PDS.WITSMLstudio.Store.Providers.GrowingObject
 
             IList<IDataObject> dataObjects;
 
+            CheckObjectAccess(uri, AclAction.Read);
+
             try
             {
                 dataObjects = dataAdapter.GetGrowingParts(Session.Adapter, uri, message.IndexInterval.StartIndex.Item, message.IndexInterval.EndIndex.Item);
@@ -135,6 +139,8 @@ namespace PDS.WITSMLstudio.Store.Providers.GrowingObject
             var dataAdapter = GetDataAdapterAndValidateUri(header.MessageId, message.Uri, out uri);
             if (dataAdapter == null) return;
 
+            CheckObjectAccess(uri, AclAction.Update);
+
             try
             {
                 dataAdapter.PutGrowingPart(Session.Adapter, uri, message.ContentType, message.Data);
@@ -157,6 +163,8 @@ namespace PDS.WITSMLstudio.Store.Providers.GrowingObject
             EtpUri uri;
             var dataAdapter = GetDataAdapterAndValidateUri(header.MessageId, message.Uri, out uri);
             if (dataAdapter == null) return;
+
+            CheckObjectAccess(uri, AclAction.Delete);
 
             try
             {
@@ -181,6 +189,8 @@ namespace PDS.WITSMLstudio.Store.Providers.GrowingObject
             var dataAdapter = GetDataAdapterAndValidateUri(header.MessageId, message.Uri, out uri);
             if (dataAdapter == null) return;
 
+            CheckObjectAccess(uri, AclAction.Delete);
+
             try
             {
                 dataAdapter.DeleteGrowingParts(uri, message.DeleteInterval.StartIndex.Item, message.DeleteInterval.EndIndex.Item);
@@ -189,6 +199,12 @@ namespace PDS.WITSMLstudio.Store.Providers.GrowingObject
             {
                 this.NotSupported(header.MessageId);
             }
+        }
+
+        private void CheckObjectAccess(EtpUri uri, AclAction action)
+        {
+            var provider = Container.Resolve<IEtpDataProvider>(new ObjectName(uri.ObjectType, uri.Family, uri.GetDataSchemaVersion()));
+            provider.CheckObjectAccess(action, uri);
         }
 
         private IGrowingObjectDataAdapter GetDataAdapterAndValidateUri(long messageId, string uri, out EtpUri etpUri)
