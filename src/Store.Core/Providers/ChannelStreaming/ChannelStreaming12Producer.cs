@@ -225,50 +225,69 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
             base.Dispose(disposing);
         }
 
-        ///// <summary>
-        ///// Handles the channel describe.
-        ///// </summary>
-        ///// <param name="args">The <see cref="ProtocolEventArgs{T}"/> instance containing the event data.</param>
-        //protected override void HandleChannelDescribe(ProtocolEventArgs<ChannelDescribe, IList<ChannelMetadataRecord>> args)
-        //{
-        //    var uris = args.Message.Uris.Contains(EtpUri.RootUri)
-        //        ? new[] { EtpUris.Witsml131, EtpUris.Witsml141, EtpUris.Witsml200 }
-        //        : args.Message.Uris.Select(x => new EtpUri(x));
-        //
-        //    foreach (var family in uris.ToLookup(x => x.Version))
-        //    {
-        //        var providers = _providers[family.Key];
-        //        foreach (var provider in providers)
-        //        {
-        //            var metadata = provider.GetChannelMetadata(Session.Adapter, family.ToArray());
-        //
-        //            metadata.ForEach(m =>
-        //            {
-        //                // Check by uri if we have the metadata in our dictionary.
-        //                var channelMetadataRecord = Channels.Values
-        //                    .Select(c => c.Item2)
-        //                    .FirstOrDefault(c => c.ChannelUri.EqualsIgnoreCase(m.ChannelUri));
-        //
-        //                // if not add it and set its channelId
-        //                if (channelMetadataRecord == null)
-        //                {
-        //                    var channelUri = new EtpUri(m.ChannelUri);
-        //                    var parentUri = channelUri.Parent;
-        //
-        //                    // e.g. Trajectory channels
-        //                    if (string.IsNullOrWhiteSpace(parentUri.ObjectId))
-        //                        parentUri = channelUri;
-        //
-        //                    m.ChannelId = Channels.Keys.Count;
-        //                    Channels.Add(m.ChannelId, new Tuple<EtpUri, IChannelMetadataRecord>(parentUri, m));
-        //                    channelMetadataRecord = m;
-        //                }
-        //
-        //                args.Context.Add(channelMetadataRecord);
-        //            });
-        //        }
-        //    }
-        //}
+        /// <summary>
+        /// Handles the channel describe and filters metadata by the caller's Read permission.
+        /// </summary>
+        protected override void HandleChannelDescribe(ProtocolEventArgs<ChannelDescribe, IList<ChannelMetadataRecord>> args)
+        {
+            var uris = args.Message.Uris.Contains(EtpUri.RootUri)
+                ? new[] { EtpUris.Witsml131, EtpUris.Witsml141, EtpUris.Witsml200 }
+                : args.Message.Uris.Select(x => new EtpUri(x));
+
+            foreach (var family in uris.ToLookup(x => x.Version))
+            {
+                var providers = _providers[family.Key];
+                foreach (var provider in providers)
+                {
+                    var metadata = provider.GetChannelMetadata(Session.Adapter, family.ToArray())
+                        .Where(IsChannelMetadataReadable)
+                        .ToList();
+
+                    metadata.ForEach(m =>
+                    {
+                        var channelMetadataRecord = Channels.Values
+                            .Select(c => c.Item2)
+                            .FirstOrDefault(c => c.ChannelUri.EqualsIgnoreCase(m.ChannelUri));
+
+                        if (channelMetadataRecord == null)
+                        {
+                            var channelUri = new EtpUri(m.ChannelUri);
+                            var parentUri = channelUri.Parent;
+                            if (string.IsNullOrWhiteSpace(parentUri.ObjectId))
+                                parentUri = channelUri;
+
+                            m.ChannelId = Channels.Keys.Count;
+                            Channels.Add(m.ChannelId, new Tuple<EtpUri, IChannelMetadataRecord>(parentUri, m));
+                            channelMetadataRecord = m;
+                        }
+
+                        args.Context.Add(channelMetadataRecord);
+                    });
+                }
+            }
+        }
+
+        private bool IsChannelMetadataReadable(IChannelMetadataRecord metadata)
+        {
+            if (!WitsmlSettings.IsUserAuthorizationEnabled)
+                return true;
+
+            if (metadata == null || string.IsNullOrWhiteSpace(metadata.ChannelUri))
+                return false;
+
+            var channelUri = new EtpUri(metadata.ChannelUri);
+            try
+            {
+                Container.Resolve<IEtpDataProvider>(
+                    new ObjectName(channelUri.ObjectType, channelUri.Family, channelUri.Version))
+                    .CheckObjectAccess(WitsmlOperationContext.Current.User, AclAction.Read, channelUri);
+                return true;
+            }
+            catch (WitsmlException)
+            {
+                return false;
+            }
+        }
 
         /// <summary>
         /// Handles the start streaming.
