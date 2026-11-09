@@ -92,7 +92,7 @@ namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
         protected override void HandleCancelNotification(IMessageHeader header, CancelNotification request)
         {
             var message = _requests.FirstOrDefault(x => x.Request.Uuid.EqualsIgnoreCase(request.RequestUuid));
-            EnsureSubscriptionOwner(message == null ? null : message.Request.Uuid, message == null ? null : _subscribers[message.Request.Uuid]);
+            if (message != null) EnsureSubscriptionOwner(_subscribers[message.Request.Uuid]);
 
             base.HandleCancelNotification(header, request);
 
@@ -116,9 +116,9 @@ namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
             provider.CheckObjectAccess(WitsmlOperationContext.Current.User, AclAction.Read, etpUri);
         }
 
-        private void EnsureSubscriptionOwner(string requestId, string owner)
+        private void EnsureSubscriptionOwner(string owner)
         {
-            if (requestId != null && !string.Equals(owner, WitsmlOperationContext.Current.User, StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(owner, WitsmlOperationContext.Current.User, StringComparison.OrdinalIgnoreCase))
                 throw new WitsmlException(ErrorCodes.InsufficientOperationRights);
         }
 
