@@ -32,6 +32,7 @@ using PDS.WITSMLstudio.Framework;
 using PDS.WITSMLstudio.Data.Channels;
 using PDS.WITSMLstudio.Store.Configuration;
 using PDS.WITSMLstudio.Store.Data.Channels;
+using PDS.WITSMLstudio.Store.Data.Security;
 
 namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
 {
@@ -529,6 +530,21 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
         /// <returns></returns>
         protected virtual async Task StreamChannelData(IList<ChannelStreamingContext> contextList, CancellationToken token)
         {
+            // Authorize every channel before opening the streaming loop. The
+            // channel URI is canonical and its parent chain carries Wellbore/Well ACLs.
+            var authorization = Container.Resolve<IUserAuthorizationProvider>();
+            foreach (var context in contextList)
+            {
+                var channelUri = !string.IsNullOrWhiteSpace(context.ChannelMetadata.ChannelUri)
+                    ? new EtpUri(context.ChannelMetadata.ChannelUri)
+                    : context.ParentUri;
+
+                if (channelUri == null)
+                    throw new WitsmlException(ErrorCodes.InsufficientOperationRights);
+
+                authorization.CheckObjectAccess(AclAction.Read, AclResourceHierarchy.FromUri(channelUri));
+            }
+
             _channelStreamingContextLists.Add(contextList);
 
             // These values can be set outside of our processing loop as the won't chnage
