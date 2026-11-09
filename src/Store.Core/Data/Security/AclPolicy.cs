@@ -13,24 +13,33 @@ namespace PDS.WITSMLstudio.Store.Data.Security
     /// <summary>Operations that can be granted on a WITSML resource.</summary>
     public enum AclAction
     {
+        /// <summary>Read an object or enumerate it in a result set.</summary>
         Read,
+        /// <summary>Create a new object beneath the resource.</summary>
         Create,
+        /// <summary>Modify an existing object.</summary>
         Update,
+        /// <summary>Delete an existing object.</summary>
         Delete
     }
 
     /// <summary>The effect of a matching ACL rule.</summary>
     public enum AclEffect
     {
+        /// <summary>Grant the specified action.</summary>
         Allow,
+        /// <summary>Explicitly reject the specified action.</summary>
         Deny
     }
 
     /// <summary>The level at which an ACL rule is attached.</summary>
     public enum AclResourceType
     {
+        /// <summary>A WITSML Well resource.</summary>
         Well,
+        /// <summary>A WITSML Wellbore resource.</summary>
         Wellbore,
+        /// <summary>A data object below a Wellbore.</summary>
         DataObject
     }
 
@@ -40,18 +49,26 @@ namespace PDS.WITSMLstudio.Store.Data.Security
     /// </summary>
     public sealed class AclRule
     {
+        /// <summary>Gets or sets the authenticated username or wildcard '*'.</summary>
         public string Username { get; set; }
+        /// <summary>Gets or sets the stable identifier of the target resource.</summary>
         public string ResourceId { get; set; }
+        /// <summary>Gets or sets the hierarchy level of the target resource.</summary>
         public AclResourceType ResourceType { get; set; }
+        /// <summary>Gets or sets the operation governed by this rule.</summary>
         public AclAction Action { get; set; }
+        /// <summary>Gets or sets whether the rule allows or denies the operation.</summary>
         public AclEffect Effect { get; set; }
+        /// <summary>Gets or sets whether a rule on a parent also applies to descendants.</summary>
         public bool Inherit { get; set; }
     }
 
     /// <summary>A resource and its parent identifiers, from object to Well.</summary>
     public sealed class AclResource
     {
+        /// <summary>Gets or sets the stable resource identifier.</summary>
         public string Id { get; set; }
+        /// <summary>Gets or sets the hierarchy level of this resource.</summary>
         public AclResourceType Type { get; set; }
     }
 
@@ -92,7 +109,9 @@ namespace PDS.WITSMLstudio.Store.Data.Security
     /// <summary>Result of evaluating an object-level ACL.</summary>
     public sealed class AclDecision
     {
+        /// <summary>Gets a value indicating whether the hierarchy contains an applicable ACL scope.</summary>
         public bool IsAclConfigured { get; internal set; }
+        /// <summary>Gets a value indicating whether the requested operation is allowed.</summary>
         public bool IsAllowed { get; internal set; }
     }
 
@@ -104,6 +123,12 @@ namespace PDS.WITSMLstudio.Store.Data.Security
     /// </summary>
     public static class AclPolicyEvaluator
     {
+        /// <summary>Evaluates matching rules for a user, operation, and resource hierarchy.</summary>
+        /// <param name="username">The authenticated username.</param>
+        /// <param name="action">The requested operation.</param>
+        /// <param name="resourceHierarchy">Resources ordered from target to ancestors.</param>
+        /// <param name="rules">Candidate rules loaded for the hierarchy.</param>
+        /// <returns>The ACL decision, including whether ACL scope is configured.</returns>
         public static AclDecision Evaluate(
             string username,
             AclAction action,
