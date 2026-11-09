@@ -16,6 +16,8 @@
 // limitations under the License.
 //-----------------------------------------------------------------------
 
+using System.Configuration;
+
 namespace PDS.WITSMLstudio.Store.Configuration
 {
     /// <summary>
@@ -27,6 +29,12 @@ namespace PDS.WITSMLstudio.Store.Configuration
         /// The IsUserAuthorizationEnabled setting.
         /// </summary>
         public static bool IsUserAuthorizationEnabled = Properties.Settings.Default.IsUserAuthorizationEnabled;
+
+        /// <summary>
+        /// Comma- or semicolon-separated administrator usernames. This value is
+        /// server configuration, not a client-supplied claim.
+        /// </summary>
+        public static string AclAdministratorUsers = ConfigurationManager.AppSettings["AclAdministratorUsers"] ?? string.Empty;
 
         /// <summary>
         /// The IsCascadeDeleteEnabled setting.
