@@ -57,21 +57,31 @@ namespace PDS.WITSMLstudio.Store.Security
                 Builders<AclRule>.Update.Set(x => x.Effect, rule.Effect),
                 Builders<AclRule>.Update.Set(x => x.Inherit, rule.Inherit));
 
-            try
+            // A concurrent first-time upsert can lose a race against the unique
+            // composite index. Retry the update; if a concurrent Delete removed the
+            // winning row before that retry, repeat the upsert rather than failing
+            // an otherwise valid Save operation.
+            const int maxAttempts = 5;
+            for (var attempt = 0; attempt < maxAttempts; attempt++)
             {
-                Collection.UpdateOne(filter, update, new UpdateOptions { IsUpsert = true });
-            }
-            catch (MongoWriteException exception)
-            {
-                // Concurrent first-time upserts can race on the unique composite key.
-                // Retry as an update when another request inserted the same rule first.
-                if (exception.WriteError == null
-                    || exception.WriteError.Category != ServerErrorCategory.DuplicateKey)
-                    throw;
+                try
+                {
+                    Collection.UpdateOne(filter, update, new UpdateOptions { IsUpsert = true });
+                    return;
+                }
+                catch (MongoWriteException exception)
+                {
+                    if (exception.WriteError == null
+                        || exception.WriteError.Category != ServerErrorCategory.DuplicateKey)
+                        throw;
 
-                var retryResult = Collection.UpdateOne(filter, update, new UpdateOptions { IsUpsert = false });
-                if (retryResult.MatchedCount == 0)
-                    throw;
+                    var retryResult = Collection.UpdateOne(filter, update, new UpdateOptions { IsUpsert = false });
+                    if (retryResult.MatchedCount > 0)
+                        return;
+
+                    if (attempt == maxAttempts - 1)
+                        throw;
+                }
             }
         }
 
