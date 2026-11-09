@@ -50,6 +50,9 @@ namespace PDS.WITSMLstudio.Store.Data
         /// <summary>Checks object-level ACL for the specified ETP resource.</summary>
         void CheckObjectAccess(AclAction action, EtpUri uri);
 
+        /// <summary>Checks object-level ACL for an explicitly supplied user.</summary>
+        void CheckObjectAccess(string username, AclAction action, EtpUri uri);
+
         /// <summary>
         /// Gets the count of data objects related to the specified URI.
         /// </summary>
