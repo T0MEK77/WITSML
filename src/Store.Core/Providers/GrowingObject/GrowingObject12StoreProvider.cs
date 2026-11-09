@@ -26,7 +26,9 @@ using Energistics.Etp.Common.Datatypes.Object;
 using Energistics.Etp.v12.Protocol.GrowingObject;
 using PDS.WITSMLstudio.Data;
 using PDS.WITSMLstudio.Framework;
+using PDS.WITSMLstudio.Store.Data;
 using PDS.WITSMLstudio.Store.Data.GrowingObjects;
+using PDS.WITSMLstudio.Store.Data.Security;
 
 namespace PDS.WITSMLstudio.Store.Providers.GrowingObject
 {
