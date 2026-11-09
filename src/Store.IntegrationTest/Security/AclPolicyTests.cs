@@ -472,6 +472,70 @@ namespace PDS.WITSMLstudio.Store.Security
             }
         }
 
+        [TestMethod]
+        public void Evaluate_Does_Not_Grant_A_Different_Action_In_Configured_Scope()
+        {
+            var rules = new[]
+            {
+                new AclRule
+                {
+                    Username = "alice",
+                    ResourceId = "object-1",
+                    ResourceType = AclResourceType.DataObject,
+                    Action = AclAction.Read,
+                    Effect = AclEffect.Allow
+                }
+            };
+
+            var result = AclPolicyEvaluator.Evaluate("alice", AclAction.Update, Hierarchy(), rules);
+
+            Assert.IsTrue(result.IsAclConfigured);
+            Assert.IsFalse(result.IsAllowed);
+        }
+
+        [TestMethod]
+        public void Evaluate_Requires_Resource_Type_To_Match_The_Hierarchy()
+        {
+            var rules = new[]
+            {
+                new AclRule
+                {
+                    Username = "alice",
+                    ResourceId = "object-1",
+                    ResourceType = AclResourceType.Well,
+                    Action = AclAction.Read,
+                    Effect = AclEffect.Allow,
+                    Inherit = true
+                }
+            };
+
+            var result = AclPolicyEvaluator.Evaluate("alice", AclAction.Read, Hierarchy(), rules);
+
+            Assert.IsFalse(result.IsAclConfigured);
+            Assert.IsFalse(result.IsAllowed);
+        }
+
+        [TestMethod]
+        public void Evaluate_Matches_Usernames_CaseInsensitively()
+        {
+            var rules = new[]
+            {
+                new AclRule
+                {
+                    Username = "ALICE",
+                    ResourceId = "object-1",
+                    ResourceType = AclResourceType.DataObject,
+                    Action = AclAction.Read,
+                    Effect = AclEffect.Allow
+                }
+            };
+
+            var result = AclPolicyEvaluator.Evaluate("alice", AclAction.Read, Hierarchy(), rules);
+
+            Assert.IsTrue(result.IsAclConfigured);
+            Assert.IsTrue(result.IsAllowed);
+        }
+
         private static WitsmlException AssertAccessDenied(Action action)
         {
             try
