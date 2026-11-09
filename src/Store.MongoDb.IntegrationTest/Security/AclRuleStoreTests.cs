@@ -442,7 +442,7 @@ namespace PDS.WITSMLstudio.Store.Security
         }
 
         [TestMethod]
-        [ExpectedException(typeof(MongoException))]
+        [ExpectedException(typeof(TimeoutException))]
         public void MongoDbAclRuleStore_Throws_When_MongoDb_Is_Unavailable()
         {
             var settings = new MongoClientSettings
