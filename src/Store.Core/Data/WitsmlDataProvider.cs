@@ -454,7 +454,13 @@ namespace PDS.WITSMLstudio.Store.Data
 
                 SetDefaultValues(dataObject);
                 var uri = GetUri(dataObject);
+
+                // Replace can change the Well/Wellbore references of a WITSML 2.0
+                // object. Resolve ACL ancestry from the parsed replacement, not
+                // from the stale object retained in the operation context.
+                WitsmlOperationContext.Current.DataObject = dataObject;
                 CheckObjectAccess(AclAction.Update, uri);
+
                 transaction.SetContext(uri);
                 Logger.DebugFormat("Replacing {0} with URI '{1}'", typeof(TObject).Name, uri);
 
