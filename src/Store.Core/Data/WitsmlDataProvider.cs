@@ -317,6 +317,12 @@ namespace PDS.WITSMLstudio.Store.Data
                     return requestObject;
             }
 
+            // A create request may be checked before the parser has materialized
+            // the object. There is no stored object to load at that point; the
+            // definitive check is repeated in Add after parsing and defaulting.
+            if (action == AclAction.Create)
+                return null;
+
             return DataAdapter.Get(uri);
         }
 
