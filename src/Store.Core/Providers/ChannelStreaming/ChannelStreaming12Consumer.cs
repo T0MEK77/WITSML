@@ -183,8 +183,10 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
                 // accepting metadata for the stream.
                 try
                 {
-                    var authorization = _container.Resolve<IUserAuthorizationProvider>();
-                    authorization.CheckObjectAccess(AclAction.Update, AclResourceHierarchy.FromUri(uri));
+                    var dataProvider = _container.Resolve<IEtpDataProvider>(
+                        new ObjectName(uri.ObjectType, uri.Family, uri.Version));
+                    if (!dataProvider.Exists(uri))
+                        throw new WitsmlException(ErrorCodes.InsufficientOperationRights);
                 }
                 catch (WitsmlException)
                 {
