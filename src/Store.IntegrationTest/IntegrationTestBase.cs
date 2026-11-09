@@ -37,6 +37,7 @@ using Energistics.Etp.v11.Protocol.ChannelStreaming;
 using Energistics.Etp.v11.Protocol.Core;
 using Energistics.Etp.v11.Protocol.Discovery;
 using Energistics.Etp.v11.Protocol.Store;
+using Energistics.Etp.v11.Protocol.StoreNotification;
 using log4net;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using PDS.WITSMLstudio.Framework;
@@ -104,6 +105,8 @@ namespace PDS.WITSMLstudio.Store
             var store = container.Resolve<IStoreStore>();
             var growingObject11 = container.Resolve<Energistics.Etp.v11.Protocol.GrowingObject.IGrowingObjectStore>();
             var growingObject12 = container.Resolve<Energistics.Etp.v12.Protocol.GrowingObject.IGrowingObjectStore>();
+            var storeNotification11 = container.Resolve<Energistics.Etp.v11.Protocol.StoreNotification.IStoreNotificationStore>();
+            var storeNotification12 = container.Resolve<Energistics.Etp.v12.Protocol.StoreNotification.IStoreNotificationStore>();
 
             // Register server handlers
             _server.Register(() => streaming);
@@ -111,6 +114,8 @@ namespace PDS.WITSMLstudio.Store
             _server.Register(() => store);
             _server.Register(() => growingObject11);
             _server.Register(() => growingObject12);
+            _server.Register(() => storeNotification11);
+            _server.Register(() => storeNotification12);
         }
 
         /// <summary>
@@ -169,6 +174,8 @@ namespace PDS.WITSMLstudio.Store
             client.Register<IStoreCustomer, StoreCustomerHandler>();
             client.Register<Energistics.Etp.v11.Protocol.GrowingObject.IGrowingObjectCustomer, Energistics.Etp.v11.Protocol.GrowingObject.GrowingObjectCustomerHandler>();
             client.Register<Energistics.Etp.v12.Protocol.GrowingObject.IGrowingObjectCustomer, Energistics.Etp.v12.Protocol.GrowingObject.GrowingObjectCustomerHandler>();
+            client.Register<Energistics.Etp.v11.Protocol.StoreNotification.IStoreNotificationCustomer, Energistics.Etp.v11.Protocol.StoreNotification.StoreNotificationCustomerHandler>();
+            client.Register<Energistics.Etp.v12.Protocol.StoreNotification.IStoreNotificationCustomer, Energistics.Etp.v12.Protocol.StoreNotification.StoreNotificationCustomerHandler>();
 
             return client;
         }
