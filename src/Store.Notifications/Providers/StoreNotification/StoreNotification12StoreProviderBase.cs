@@ -29,6 +29,7 @@ using Energistics.Etp.v12.Protocol.StoreNotification;
 using Newtonsoft.Json.Linq;
 using PDS.WITSMLstudio.Framework;
 using PDS.WITSMLstudio.Store;
+using PDS.WITSMLstudio.Store.Data;
 using PDS.WITSMLstudio.Store.Data.Security;
 
 namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
@@ -56,6 +57,10 @@ namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
         /// <summary>Authorization service used to filter asynchronous notifications.</summary>
         [Import]
         public IUserAuthorizationProvider AuthorizationProvider { get; set; }
+
+        /// <summary>MEF container used to resolve the canonical WITSML data provider.</summary>
+        [Import]
+        public IContainer Container { get; set; }
 
         /// <summary>
         /// Handles the subscribe notification request.
@@ -155,7 +160,9 @@ namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
             try
             {
                 var etpUri = new EtpUri(uri);
-                AuthorizationProvider.CheckObjectAccess(username, AclAction.Read, AclResourceHierarchy.FromUri(etpUri));
+                var provider = Container.Resolve<IEtpDataProvider>(
+                    new ObjectName(etpUri.ObjectType, etpUri.Family, etpUri.Version));
+                provider.CheckObjectAccess(username, AclAction.Read, etpUri, ParseNotificationObject(etpUri, dataObject));
             }
             catch (WitsmlException)
             {
@@ -179,7 +186,9 @@ namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
 
             try
             {
-                AuthorizationProvider.CheckObjectAccess(username, AclAction.Read, AclResourceHierarchy.FromUri(etpUri));
+                var provider = Container.Resolve<IEtpDataProvider>(
+                    new ObjectName(etpUri.ObjectType, etpUri.Family, etpUri.Version));
+                provider.CheckObjectAccess(username, AclAction.Read, etpUri, ParseNotificationObject(etpUri, dataObject));
             }
             catch (WitsmlException)
             {
@@ -192,6 +201,20 @@ namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
                 ChangeTime = dateTime.ToUnixTimeMicroseconds(),
                 DataObject = GetDataObject(etpUri.ObjectType, etpUri.Family, etpUri.Version, dataObject, request.Request.IncludeObjectData)
             });
+        }
+
+        private static object ParseNotificationObject(EtpUri uri, object dataObject)
+        {
+            var jObject = dataObject as JObject;
+            if (jObject == null && !(dataObject is string))
+                return dataObject;
+
+            var type = ObjectTypes.GetObjectGroupType(uri.ObjectType, uri.Family, uri.Version) ??
+                       ObjectTypes.GetObjectType(uri.ObjectType, uri.Family, uri.Version);
+
+            return jObject != null
+                ? jObject.ToObject(type)
+                : WitsmlParser.Parse(type, WitsmlParser.Parse(dataObject.ToString()).Root);
         }
 
         protected virtual DataObject GetDataObject(string objectType, string family, string version, object dataObject, bool includeObjectData)
