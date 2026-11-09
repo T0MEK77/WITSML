@@ -208,5 +208,27 @@ namespace PDS.WITSMLstudio.Store.Security
             Assert.IsFalse(result.IsAclConfigured);
             Assert.IsFalse(result.IsAllowed);
         }
+
+        [TestMethod]
+        public void Evaluate_Create_Denies_By_Default_When_Immediate_Parent_Is_Acl_Scoped()
+        {
+            var rules = new[]
+            {
+                new AclRule
+                {
+                    Username = "bob",
+                    ResourceId = "wellbore-1",
+                    ResourceType = AclResourceType.Wellbore,
+                    Action = AclAction.Read,
+                    Effect = AclEffect.Allow,
+                    Inherit = false
+                }
+            };
+
+            var result = AclPolicyEvaluator.Evaluate("alice", AclAction.Create, Hierarchy(), rules);
+
+            Assert.IsTrue(result.IsAclConfigured);
+            Assert.IsFalse(result.IsAllowed);
+        }
     }
 }
