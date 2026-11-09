@@ -43,6 +43,28 @@ namespace PDS.WITSMLstudio.Store.Security
         }
 
         [TestMethod]
+        public void Evaluate_Allows_Inherited_Wildcard_Rule_For_Any_User()
+        {
+            var rules = new[]
+            {
+                new AclRule
+                {
+                    Username = "*",
+                    ResourceId = "well-1",
+                    ResourceType = AclResourceType.Well,
+                    Action = AclAction.Read,
+                    Effect = AclEffect.Allow,
+                    Inherit = true
+                }
+            };
+
+            var result = AclPolicyEvaluator.Evaluate("alice", AclAction.Read, Hierarchy(), rules);
+
+            Assert.IsTrue(result.IsAclConfigured);
+            Assert.IsTrue(result.IsAllowed);
+        }
+
+        [TestMethod]
         public void Evaluate_Deny_Takes_Precedence_Over_Inherited_Allow()
         {
             var rules = new[]
