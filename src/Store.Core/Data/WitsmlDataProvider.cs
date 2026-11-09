@@ -272,7 +272,7 @@ namespace PDS.WITSMLstudio.Store.Data
                 && uri.ObjectType != "Well" && uri.ObjectType != "Wellbore"
                 && !string.IsNullOrWhiteSpace(uri.ObjectId))
             {
-                var storedObject = DataAdapter.Get(uri);
+                var storedObject = GetObjectForAcl(uri);
                 AddReferencedResource(hierarchy, storedObject, "Wellbore", AclResourceType.Wellbore);
 
                 var wellbore = GetReference(storedObject, "Wellbore");
@@ -291,11 +291,26 @@ namespace PDS.WITSMLstudio.Store.Data
                 && string.Equals(uri.Family, "witsml", StringComparison.OrdinalIgnoreCase)
                 && string.Equals(uri.Version, "2.0", StringComparison.OrdinalIgnoreCase))
             {
-                var storedWellbore = DataAdapter.Get(uri);
+                var storedWellbore = GetObjectForAcl(uri);
                 AddReferencedResource(hierarchy, storedWellbore, "Well", AclResourceType.Well);
             }
 
             authorization.CheckObjectAccess(action, hierarchy);
+        }
+
+        private object GetObjectForAcl(EtpUri uri)
+        {
+            var context = WitsmlOperationContext.Current;
+            var requestObject = context == null ? null : context.DataObject;
+
+            if (requestObject != null)
+            {
+                var requestId = GetReferenceId(requestObject);
+                if (string.Equals(requestId, uri.ObjectId, StringComparison.OrdinalIgnoreCase))
+                    return requestObject;
+            }
+
+            return DataAdapter.Get(uri);
         }
 
         private static void AddReferencedResource(IList<AclResource> hierarchy, object dataObject, string propertyName, AclResourceType resourceType)
