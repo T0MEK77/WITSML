@@ -46,6 +46,9 @@ namespace PDS.WITSMLstudio.Store.Data
         /// <returns>true if the data object exists; otherwise, false</returns>
         bool Exists(EtpUri uri);
 
+        /// <summary>Checks object-level ACL for the specified ETP resource.</summary>
+        void CheckObjectAccess(AclAction action, EtpUri uri);
+
         /// <summary>
         /// Gets the count of data objects related to the specified URI.
         /// </summary>
