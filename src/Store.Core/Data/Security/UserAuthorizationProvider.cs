@@ -43,7 +43,7 @@ namespace PDS.WITSMLstudio.Store.Data.Security
         [ImportMany]
         public List<IUserAuthorizationAdapter> UserAuthorizationAdapters { get; set; }
 
-        [Import]
+        [Import(AllowDefault = true)]
         public IAclRuleStore AclRuleStore { get; set; }
 
         /// <summary>
@@ -80,7 +80,10 @@ namespace PDS.WITSMLstudio.Store.Data.Security
             if (AclRuleStore == null)
                 throw new WitsmlException(ErrorCodes.InsufficientOperationRights);
 
-            var resources = (resourceHierarchy ?? throw new ArgumentNullException("resourceHierarchy")).ToList();
+            if (resourceHierarchy == null)
+                throw new ArgumentNullException("resourceHierarchy");
+
+            var resources = resourceHierarchy.ToList();
             var rules = AclRuleStore.GetRules(resources.Select(x => x.Id));
             var decision = AclPolicyEvaluator.Evaluate(WitsmlOperationContext.Current.User, action, resources, rules);
 
