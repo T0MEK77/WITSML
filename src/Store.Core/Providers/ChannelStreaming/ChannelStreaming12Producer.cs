@@ -532,17 +532,16 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
         {
             // Authorize every channel before opening the streaming loop. The
             // channel URI is canonical and its parent chain carries Wellbore/Well ACLs.
-            var authorization = Container.Resolve<IUserAuthorizationProvider>();
             foreach (var context in contextList)
             {
                 var channelUri = !string.IsNullOrWhiteSpace(context.ChannelMetadata.ChannelUri)
                     ? new EtpUri(context.ChannelMetadata.ChannelUri)
                     : context.ParentUri;
 
-                if (channelUri == null)
+                if (channelUri == null
+                    || !Container.Resolve<IEtpDataProvider>(
+                        new ObjectName(channelUri.ObjectType, channelUri.Family, channelUri.Version)).Exists(channelUri))
                     throw new WitsmlException(ErrorCodes.InsufficientOperationRights);
-
-                authorization.CheckObjectAccess(AclAction.Read, AclResourceHierarchy.FromUri(channelUri));
             }
 
             _channelStreamingContextLists.Add(contextList);
