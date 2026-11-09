@@ -139,6 +139,13 @@ namespace PDS.WITSMLstudio.Store.Providers.Discovery
             {
                 return;
             }
+
+            // Do not disclose child folders or child counts for an unreadable
+            // object. WITSML 2.0 ancestry is resolved by the typed data provider.
+            var resourceToCheck = !string.IsNullOrWhiteSpace(etpUri.ObjectId) ? etpUri :
+                (!string.IsNullOrWhiteSpace(parentUri.ObjectId) ? parentUri : null);
+            if (resourceToCheck != null && !IsObjectReadable(resourceToCheck))
+                return;
             if (etpUri.IsBaseUri)
             {
                 CreateFoldersByObjectType(etpAdapter, etpUri)
