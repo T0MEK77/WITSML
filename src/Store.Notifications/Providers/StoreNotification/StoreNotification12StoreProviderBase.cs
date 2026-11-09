@@ -92,6 +92,7 @@ namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
             {
                 _headers[request.Request.RequestUuid] = header;
                 _subscribers[request.Request.RequestUuid] = WitsmlOperationContext.Current.User;
+                StoreNotificationSubscriptionOwnerRegistry.Register(GetSubscriptionRegistryKey(request.Request.RequestUuid), WitsmlOperationContext.Current.User);
                 _requests.Add(request);
             }
         
@@ -108,11 +109,15 @@ namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
             lock (_syncRoot)
             {
             var message = _requests.FirstOrDefault(x => x.Request.RequestUuid.Equals(request.RequestUuid));
-            if (message != null)
+            var registryKey = GetSubscriptionRegistryKey(request.RequestUuid);
+            string registeredOwner;
+            var hasRegisteredOwner = StoreNotificationSubscriptionOwnerRegistry.TryGetOwner(registryKey, out registeredOwner);
+            if (message != null || hasRegisteredOwner)
             {
+                var owner = message != null ? _subscribers[message.Request.RequestUuid] : registeredOwner;
                 try
                 {
-                    EnsureSubscriptionOwner(_subscribers[message.Request.RequestUuid]);
+                    EnsureSubscriptionOwner(owner);
                 }
                 catch (WitsmlException exception)
                 {
@@ -131,13 +136,19 @@ namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
             {
                 _requests.Remove(message);
                 _headers.Remove(message.Request.RequestUuid);
+                StoreNotificationSubscriptionOwnerRegistry.Remove(registryKey, _subscribers[message.Request.RequestUuid]);
                 _subscribers.Remove(message.Request.RequestUuid);
             }
         
             }
         }
 
-        private void CheckSubscriptionReadAccess(string uri)
+        private static string GetSubscriptionRegistryKey(Energistics.Etp.v12.Datatypes.Uuid requestUuid)
+        {
+            return "ETP12:" + requestUuid;
+        }
+
+private void CheckSubscriptionReadAccess(string uri)
         {
             var etpUri = new EtpUri(uri);
             var provider = Container.Resolve<IEtpDataProvider>(
@@ -161,6 +172,16 @@ namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
         {
             if (disposing)
             {
+                lock (_syncRoot)
+                {
+                    foreach (var subscriber in _subscribers)
+                        StoreNotificationSubscriptionOwnerRegistry.Remove(GetSubscriptionRegistryKey(subscriber.Key), subscriber.Value);
+
+                    _requests.Clear();
+                    _headers.Clear();
+                    _subscribers.Clear();
+                }
+
                 Disconnect();
             }
 
