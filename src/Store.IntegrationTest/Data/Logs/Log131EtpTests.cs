@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using Energistics.Etp;
 using Energistics.Etp.Common;
 using Energistics.Etp.Common.Protocol.Core;
+using Energistics.Etp.v11.Protocol.Core;
 using Energistics.Etp.v11.Protocol.GrowingObject;
 using GrowingObject12Customer = Energistics.Etp.v12.Protocol.GrowingObject.IGrowingObjectCustomer;
 using PDS.WITSMLstudio.Store.Configuration;
@@ -202,7 +203,7 @@ namespace PDS.WITSMLstudio.Store.Data.Logs
             var originalAuthorizationEnabled = WitsmlSettings.IsUserAuthorizationEnabled;
             var originalAdapters = authorizationProvider.UserAuthorizationAdapters;
             var requestUuid = System.Guid.NewGuid().ToString();
-            Energistics.Etp.IEtpClient otherClient = null;
+            IEtpClient otherClient = null;
 
             try
             {
@@ -278,7 +279,7 @@ namespace PDS.WITSMLstudio.Store.Data.Logs
 
                 var otherHandler = otherClient.Handler<Energistics.Etp.v12.Protocol.StoreNotification.IStoreNotificationCustomer>();
                 var denied = HandleAsync<IProtocolException>(x => otherHandler.OnProtocolException += x);
-                otherHandler.UnsubscribeNotifications(requestUuid);
+                otherHandler.UnsubscribeNotification(requestUuid);
                 var exception = await denied;
                 Assert.IsNotNull(exception?.Message);
                 Assert.AreEqual((int)ErrorCodes.InsufficientOperationRights, exception.Message.ErrorCode);
