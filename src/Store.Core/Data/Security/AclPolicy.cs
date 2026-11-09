@@ -151,7 +151,7 @@ namespace PDS.WITSMLstudio.Store.Data.Security
 
             // A parent rule scopes descendants only when inheritance is enabled.
             // A rule attached directly to the requested resource always scopes it.
-            var configured = allRules.Any(rule => IsApplicable(rule, resources));
+            var configured = allRules.Any(rule => IsApplicable(rule, resources, action));
 
             if (!configured)
                 return new AclDecision { IsAclConfigured = false, IsAllowed = false };
@@ -160,7 +160,7 @@ namespace PDS.WITSMLstudio.Store.Data.Security
                 rule.Action == action
                 && (string.Equals(rule.Username, username, StringComparison.OrdinalIgnoreCase)
                     || string.Equals(rule.Username, "*", StringComparison.Ordinal))
-                && IsApplicable(rule, resources)).ToList();
+                && IsApplicable(rule, resources, action)).ToList();
 
             if (applicable.Any(rule => rule.Effect == AclEffect.Deny))
                 return new AclDecision { IsAclConfigured = true, IsAllowed = false };
@@ -172,7 +172,7 @@ namespace PDS.WITSMLstudio.Store.Data.Security
             };
         }
 
-        private static bool IsApplicable(AclRule rule, IList<AclResource> hierarchy)
+        private static bool IsApplicable(AclRule rule, IList<AclResource> hierarchy, AclAction action)
         {
             for (var index = 0; index < hierarchy.Count; index++)
             {
@@ -183,7 +183,9 @@ namespace PDS.WITSMLstudio.Store.Data.Security
 
                 // A rule on the target itself always applies. Rules on parents
                 // apply only when inheritance is explicitly enabled.
-                return index == 0 || rule.Inherit;
+                // Create is authorized against the immediate parent even when that
+                // parent's rule is not inherited for ordinary child operations.
+                return index == 0 || (action == AclAction.Create && index == 1) || rule.Inherit;
             }
 
             return false;
