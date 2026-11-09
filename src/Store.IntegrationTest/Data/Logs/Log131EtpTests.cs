@@ -23,6 +23,8 @@ using Energistics.Etp.Common;
 using Energistics.Etp.Common.Protocol.Core;
 using Energistics.Etp.v11;
 using Energistics.Etp.v11.Protocol.Core;
+using Etp12CoreClient = Energistics.Etp.v12.Protocol.Core.ICoreClient;
+using Etp12OpenSession = Energistics.Etp.v12.Protocol.Core.OpenSession;
 using Energistics.Etp.v11.Protocol.GrowingObject;
 using GrowingObject12Customer = Energistics.Etp.v12.Protocol.GrowingObject.IGrowingObjectCustomer;
 using PDS.WITSMLstudio.Store.Configuration;
@@ -40,6 +42,38 @@ namespace PDS.WITSMLstudio.Store.Data.Logs
     /// </summary>
     public partial class Log131EtpTests
     {
+        protected override void OnTestSetUp()
+        {
+            base.OnTestSetUp();
+
+            // Select the ETP version before EtpSetUp creates the WebSocket client
+            // and registers version-specific server protocol handlers.
+            TestSettings.EtpVersion = TestContext.TestName.StartsWith("Log131_Etp12", System.StringComparison.Ordinal)
+                ? "1.2"
+                : "1.1";
+        }
+
+        private async Task RequestEtp12SessionAndAssert(IEtpClient client)
+        {
+            var onOpenSession = HandleAsync<Etp12OpenSession>(
+                x => client.Handler<Etp12CoreClient>().OnOpenSession += x);
+
+            Assert.IsTrue(await client.OpenAsyncWithTimeout());
+            var openArgs = await onOpenSession;
+
+            Assert.IsNotNull(openArgs?.Message?.SessionId);
+            System.Guid sessionId;
+            Assert.IsTrue(System.Guid.TryParse(openArgs.Message.SessionId, out sessionId));
+
+            foreach (var protocol in openArgs.Message.SupportedProtocols)
+            {
+                var version = protocol.ProtocolVersion;
+                Assert.AreEqual("1.2", $"{version.Major}.{version.Minor}");
+            }
+
+            Assert.IsTrue(openArgs.Message.SupportedProtocols.Any(
+                x => x.Protocol == (int)Protocols.GrowingObject));
+        }
         [TestMethod]
         public async Task Log131_GrowingObjectGet_Denies_Explicit_Read_Deny()
         {
@@ -165,7 +199,7 @@ namespace PDS.WITSMLstudio.Store.Data.Logs
             {
                 authorizationProvider.UserAuthorizationAdapters = new List<IUserAuthorizationAdapter> { new AllowEndpointAuthorizationAdapter() };
                 WitsmlSettings.IsUserAuthorizationEnabled = true;
-                await RequestSessionAndAssert(10, Protocols.ChannelStreaming, Protocols.Discovery, Protocols.Store, Protocols.GrowingObject, Protocols.StoreNotification);
+                await RequestEtp12SessionAndAssert(_client);
                 aclRuleStore.Save(denyRule);
 
                 var handler = _client.Handler<Energistics.Etp.v12.Protocol.StoreNotification.IStoreNotificationCustomer>();
@@ -259,7 +293,7 @@ namespace PDS.WITSMLstudio.Store.Data.Logs
             {
                 authorizationProvider.UserAuthorizationAdapters = new List<IUserAuthorizationAdapter> { new AllowEndpointAuthorizationAdapter() };
                 WitsmlSettings.IsUserAuthorizationEnabled = true;
-                await RequestSessionAndAssert(10, Protocols.ChannelStreaming, Protocols.Discovery, Protocols.Store, Protocols.GrowingObject, Protocols.StoreNotification);
+                await RequestEtp12SessionAndAssert(_client);
 
                 var ownerHandler = _client.Handler<Energistics.Etp.v12.Protocol.StoreNotification.IStoreNotificationCustomer>();
                 ownerHandler.SubscribeNotification(new Energistics.Etp.v12.Datatypes.Object.SubscriptionInfo
@@ -276,7 +310,7 @@ namespace PDS.WITSMLstudio.Store.Data.Logs
                 });
 
                 otherClient = InitClient(CreateClient(_etpServerUrl, "acl-other-user", TestSettings.Password));
-                var otherSession = HandleAsync<OpenSession>(x => otherClient.Handler<ICoreClient>().OnOpenSession += x);
+                var otherSession = HandleAsync<Etp12OpenSession>(x => otherClient.Handler<Etp12CoreClient>().OnOpenSession += x);
                 Assert.IsTrue(await otherClient.OpenAsyncWithTimeout());
                 await otherSession;
 
@@ -347,7 +381,7 @@ namespace PDS.WITSMLstudio.Store.Data.Logs
             {
                 authorizationProvider.UserAuthorizationAdapters = new List<IUserAuthorizationAdapter> { new AllowEndpointAuthorizationAdapter() };
                 WitsmlSettings.IsUserAuthorizationEnabled = true;
-                await RequestSessionAndAssert(10, Protocols.ChannelStreaming, Protocols.Discovery, Protocols.Store, Protocols.GrowingObject, Protocols.StoreNotification);
+                await RequestEtp12SessionAndAssert(_client);
                 aclRuleStore.Save(denyRule);
 
                 var handler = _client.Handler<GrowingObject12Customer>();
@@ -482,7 +516,7 @@ namespace PDS.WITSMLstudio.Store.Data.Logs
                 WitsmlSettings.IsUserAuthorizationEnabled = true;
                 aclRuleStore.Save(denyRule);
 
-                await RequestSessionAndAssert(10, Protocols.ChannelStreaming, Protocols.Discovery, Protocols.Store, Protocols.GrowingObject, Protocols.StoreNotification);
+                await RequestEtp12SessionAndAssert(_client);
 
                 var handler = _client.Handler<GrowingObject12Customer>();
                 var onProtocolException = HandleAsync<IProtocolException>(
