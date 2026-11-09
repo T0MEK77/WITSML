@@ -19,7 +19,17 @@ namespace PDS.WITSMLstudio.Store.Security
         [ImportingConstructor]
         public MongoDbAclRuleStore(IDatabaseProvider databaseProvider)
         {
+            if (databaseProvider == null) throw new ArgumentNullException("databaseProvider");
             _databaseProvider = databaseProvider;
+
+            var keys = Builders<AclRule>.IndexKeys
+                .Ascending(x => x.Username)
+                .Ascending(x => x.ResourceId)
+                .Ascending(x => x.ResourceType)
+                .Ascending(x => x.Action);
+            Collection.Indexes.CreateOne(new CreateIndexModel<AclRule>(
+                keys,
+                new CreateIndexOptions { Unique = true, Name = "UX_AclRules_Username_Resource_Type_Action" }));
         }
 
         private IMongoCollection<AclRule> Collection
@@ -54,7 +64,20 @@ namespace PDS.WITSMLstudio.Store.Security
                 Builders<AclRule>.Update.Set(x => x.Effect, rule.Effect),
                 Builders<AclRule>.Update.Set(x => x.Inherit, rule.Inherit));
 
-            Collection.UpdateOne(filter, update, new UpdateOptions { IsUpsert = true });
+            try
+            {
+                Collection.UpdateOne(filter, update, new UpdateOptions { IsUpsert = true });
+            }
+            catch (MongoWriteException exception)
+            {
+                // Concurrent first-time upserts can race on the unique composite key.
+                // Retry as an update when another request inserted the same rule first.
+                if (exception.WriteError == null
+                    || exception.WriteError.Category != ServerErrorCategory.DuplicateKey)
+                    throw;
+
+                Collection.UpdateOne(filter, update, new UpdateOptions { IsUpsert = false });
+            }
         }
 
         public void Delete(string username, string resourceId, AclResourceType resourceType, AclAction action)
