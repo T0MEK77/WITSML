@@ -43,6 +43,7 @@ namespace PDS.WITSMLstudio.Store.Data.Security
         [ImportMany]
         public List<IUserAuthorizationAdapter> UserAuthorizationAdapters { get; set; }
 
+        /// <summary>Gets or sets the optional persistent object ACL rule store.</summary>
         [Import(AllowDefault = true)]
         public IAclRuleStore AclRuleStore { get; set; }
 
