@@ -28,6 +28,7 @@ using Energistics.Etp.Common.Datatypes;
 using log4net;
 using PDS.WITSMLstudio.Framework;
 using PDS.WITSMLstudio.Store.Configuration;
+using PDS.WITSMLstudio.Store.Data.Security;
 using PDS.WITSMLstudio.Store.Transactions;
 
 namespace PDS.WITSMLstudio.Store.Data
@@ -385,7 +386,14 @@ namespace PDS.WITSMLstudio.Store.Data
 
                 foreach (var dataObject in dataObjects)
                 {
-                    adapter.Delete(adapter.GetUri(dataObject));
+                    var childUri = adapter.GetUri(dataObject);
+
+                    // A cascade delete must not bypass an explicit child-level
+                    // Deny or the absence of a child-level Delete grant.
+                    var authorization = Container.Resolve<IUserAuthorizationProvider>();
+                    authorization.CheckObjectAccess(AclAction.Delete, AclResourceHierarchy.FromUri(childUri));
+
+                    adapter.Delete(childUri);
                 }
             }
         }
