@@ -821,6 +821,7 @@
     <Compile Include="Providers\Store\StoreStore200Provider.cs" />
     <Compile Include="Providers\Store\StoreStore141Provider.cs" />
     <Compile Include="Providers\Store\Store11StoreProvider.cs" />
+    <Compile Include="Data\Security\AclPolicy.cs" />
     <Compile Include="Data\Security\IUserAuthorizationProvider.cs" />
     <Compile Include="Data\Security\UserAuthorizationProvider.cs" />
     <Compile Include="Transactions\IWitsmlTransaction.cs" />
