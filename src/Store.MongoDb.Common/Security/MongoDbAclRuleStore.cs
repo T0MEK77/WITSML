@@ -46,7 +46,15 @@ namespace PDS.WITSMLstudio.Store.Security
                 Builders<AclRule>.Filter.Eq(x => x.ResourceId, rule.ResourceId),
                 Builders<AclRule>.Filter.Eq(x => x.ResourceType, rule.ResourceType),
                 Builders<AclRule>.Filter.Eq(x => x.Action, rule.Action));
-            Collection.ReplaceOne(filter, rule, new ReplaceOptions { IsUpsert = true });
+            var update = Builders<AclRule>.Update.Combine(
+                Builders<AclRule>.Update.Set(x => x.Username, rule.Username),
+                Builders<AclRule>.Update.Set(x => x.ResourceId, rule.ResourceId),
+                Builders<AclRule>.Update.Set(x => x.ResourceType, rule.ResourceType),
+                Builders<AclRule>.Update.Set(x => x.Action, rule.Action),
+                Builders<AclRule>.Update.Set(x => x.Effect, rule.Effect),
+                Builders<AclRule>.Update.Set(x => x.Inherit, rule.Inherit));
+
+            Collection.UpdateOne(filter, update, new UpdateOptions { IsUpsert = true });
         }
 
         public void Delete(string username, string resourceId, AclResourceType resourceType, AclAction action)
