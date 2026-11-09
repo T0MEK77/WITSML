@@ -538,10 +538,12 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
                     ? new EtpUri(context.ChannelMetadata.ChannelUri)
                     : context.ParentUri;
 
-                if (channelUri == null
-                    || !Container.Resolve<IEtpDataProvider>(
-                        new ObjectName(channelUri.ObjectType, channelUri.Family, channelUri.Version)).Exists(channelUri))
+                if (channelUri == null)
                     throw new WitsmlException(ErrorCodes.InsufficientOperationRights);
+
+                Container.Resolve<IEtpDataProvider>(
+                    new ObjectName(channelUri.ObjectType, channelUri.Family, channelUri.Version))
+                    .CheckObjectAccess(AclAction.Read, channelUri);
             }
 
             _channelStreamingContextLists.Add(contextList);
