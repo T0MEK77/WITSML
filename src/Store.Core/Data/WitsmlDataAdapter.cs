@@ -382,17 +382,21 @@ namespace PDS.WITSMLstudio.Store.Data
 
             foreach (var adapter in adapters)
             {
-                var dataObjects = adapter.GetAll(uri);
+                var childUris = adapter.GetAll(uri)
+                    .Cast<object>()
+                    .Select(adapter.GetUri)
+                    .ToList();
 
-                foreach (var dataObject in dataObjects)
+                // Preflight the whole immediate child set before deleting any
+                // of it, so a denied child does not leave a partially deleted set.
+                var authorization = Container.Resolve<IUserAuthorizationProvider>();
+                foreach (var childUri in childUris)
                 {
-                    var childUri = adapter.GetUri(dataObject);
-
-                    // A cascade delete must not bypass an explicit child-level
-                    // Deny or the absence of a child-level Delete grant.
-                    var authorization = Container.Resolve<IUserAuthorizationProvider>();
                     authorization.CheckObjectAccess(AclAction.Delete, AclResourceHierarchy.FromUri(childUri));
+                }
 
+                foreach (var childUri in childUris)
+                {
                     adapter.Delete(childUri);
                 }
             }
