@@ -164,5 +164,49 @@ namespace PDS.WITSMLstudio.Store.Security
             Assert.IsTrue(result.IsAclConfigured);
             Assert.IsFalse(result.IsAllowed);
         }
+
+        [TestMethod]
+        public void Evaluate_Create_Uses_Immediate_Parent_Without_Inheritance()
+        {
+            var rules = new[]
+            {
+                new AclRule
+                {
+                    Username = "alice",
+                    ResourceId = "wellbore-1",
+                    ResourceType = AclResourceType.Wellbore,
+                    Action = AclAction.Create,
+                    Effect = AclEffect.Allow,
+                    Inherit = false
+                }
+            };
+
+            var result = AclPolicyEvaluator.Evaluate("alice", AclAction.Create, Hierarchy(), rules);
+
+            Assert.IsTrue(result.IsAclConfigured);
+            Assert.IsTrue(result.IsAllowed);
+        }
+
+        [TestMethod]
+        public void Evaluate_Create_Does_Not_Use_NonInherited_Grandparent_Rule()
+        {
+            var rules = new[]
+            {
+                new AclRule
+                {
+                    Username = "alice",
+                    ResourceId = "well-1",
+                    ResourceType = AclResourceType.Well,
+                    Action = AclAction.Create,
+                    Effect = AclEffect.Allow,
+                    Inherit = false
+                }
+            };
+
+            var result = AclPolicyEvaluator.Evaluate("alice", AclAction.Create, Hierarchy(), rules);
+
+            Assert.IsFalse(result.IsAclConfigured);
+            Assert.IsFalse(result.IsAllowed);
+        }
     }
 }
