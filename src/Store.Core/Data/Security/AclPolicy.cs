@@ -6,6 +6,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Energistics.Etp.Common.Datatypes;
 
 namespace PDS.WITSMLstudio.Store.Data.Security
 {
@@ -52,6 +53,40 @@ namespace PDS.WITSMLstudio.Store.Data.Security
     {
         public string Id { get; set; }
         public AclResourceType Type { get; set; }
+    }
+
+    /// <summary>Builds the ACL hierarchy from a canonical ETP URI.</summary>
+    public static class AclResourceHierarchy
+    {
+        /// <summary>
+        /// Returns resources ordered from the requested object to its Well ancestor.
+        /// </summary>
+        public static IList<AclResource> FromUri(EtpUri uri)
+        {
+            if (uri == null) throw new ArgumentNullException("uri");
+
+            var resources = new List<AclResource>();
+            var current = uri;
+
+            while (current != null && !current.IsBaseUri)
+            {
+                if (!string.IsNullOrWhiteSpace(current.ObjectId))
+                {
+                    var objectType = current.ObjectType ?? string.Empty;
+                    var resourceType = objectType.IndexOf("wellbore", StringComparison.OrdinalIgnoreCase) >= 0
+                        ? AclResourceType.Wellbore
+                        : objectType.IndexOf("well", StringComparison.OrdinalIgnoreCase) >= 0
+                            ? AclResourceType.Well
+                            : AclResourceType.DataObject;
+
+                    resources.Add(new AclResource { Id = current.ObjectId, Type = resourceType });
+                }
+
+                current = current.Parent;
+            }
+
+            return resources;
+        }
     }
 
     /// <summary>Result of evaluating an object-level ACL.</summary>
