@@ -156,7 +156,7 @@ namespace PDS.WITSMLstudio.Store
         protected IEtpSelfHostedWebServer CreateServer(int port)
         {
             var version = GetType().Assembly.GetName().Version.ToString();
-            var server = EtpFactory.CreateSelfHostedWebServer(port, GetType().AssemblyQualifiedName, version);
+            var server = EtpFactory.CreateSelfHostedWebServer(WebSocketType.WebSocket4Net, port, GetType().AssemblyQualifiedName, version);
             
             return server;
         }
@@ -209,7 +209,7 @@ namespace PDS.WITSMLstudio.Store
                 client.Register<IChannelStreamingConsumer, ChannelStreamingConsumerHandler>();
                 client.Register<IDiscoveryCustomer, DiscoveryCustomerHandler>();
                 client.Register<IStoreCustomer, StoreCustomerHandler>();
-                client.Register<Energistics.Etp.v11.Protocol.GrowingObject.IGrowingObjectCustomer, Energistics.Etp.v11.Protocol.GrowingObject.GrowingObjectCustomerHandler>();
+                client.Register<Energistics.Etp.v11.Protocol.GrowingObject.IGrowingObjectCustomer, PDS.WITSMLstudio.Store.Data.Logs.AclGrowingObjectCustomerHandler>();
                 client.Register<Energistics.Etp.v11.Protocol.StoreNotification.IStoreNotificationCustomer, Energistics.Etp.v11.Protocol.StoreNotification.StoreNotificationCustomerHandler>();
             }
 

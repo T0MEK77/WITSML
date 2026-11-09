@@ -107,7 +107,7 @@ namespace PDS.WITSMLstudio.Store.Data.Logs
         public async Task Log131_GrowingObjectDeleteRange_Denies_Explicit_Delete_Deny()
         {
             await AssertGrowingObjectDeniedAsync(AclAction.Delete,
-                handler => handler.GrowingObjectDeleteRange(Log.GetUri().ToString(), 0L, 10L, string.Empty, string.Empty));
+                handler => ((AclGrowingObjectCustomerHandler)handler).GrowingObjectDeleteRangeWithAclFields(Log.GetUri().ToString(), 0L, 10L, string.Empty, string.Empty));
         }
 
         [TestMethod]
@@ -593,5 +593,31 @@ namespace PDS.WITSMLstudio.Store.Data.Logs
             Assert.IsNotNull(result.LogData);
             Assert.AreEqual(rowsExpected, result.LogData.Count);
         }
+    }
+}
+
+/// <summary>
+/// Test-only ETP 1.1 customer handler that sends all required fields for
+/// GrowingObjectDeleteRange. The upstream DevKit handler currently omits
+/// Uom and DepthDatum when building that message.
+/// </summary>
+internal sealed class AclGrowingObjectCustomerHandler : Energistics.Etp.v11.Protocol.GrowingObject.GrowingObjectCustomerHandler
+{
+    public long GrowingObjectDeleteRangeWithAclFields(string uri, object startIndex, object endIndex, string uom, string depthDatum)
+    {
+        var header = CreateMessageHeader(
+            Energistics.Etp.v11.Protocols.GrowingObject,
+            Energistics.Etp.v11.MessageTypes.GrowingObject.GrowingObjectDeleteRange);
+
+        var message = new Energistics.Etp.v11.Protocol.GrowingObject.GrowingObjectDeleteRange
+        {
+            Uri = uri,
+            StartIndex = new Energistics.Etp.v11.Datatypes.Object.GrowingObjectIndex { Item = startIndex },
+            EndIndex = new Energistics.Etp.v11.Datatypes.Object.GrowingObjectIndex { Item = endIndex },
+            Uom = uom ?? string.Empty,
+            DepthDatum = depthDatum ?? string.Empty
+        };
+
+        return Session.SendMessage(header, message);
     }
 }
