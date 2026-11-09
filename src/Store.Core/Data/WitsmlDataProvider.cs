@@ -256,7 +256,7 @@ namespace PDS.WITSMLstudio.Store.Data
             }
         }
 
-        private void CheckObjectAccess(AclAction action, EtpUri uri)
+        protected void CheckObjectAccess(AclAction action, EtpUri uri)
         {
             var authorization = Container.Resolve<IUserAuthorizationProvider>();
             authorization.CheckObjectAccess(action, new[]
@@ -265,7 +265,7 @@ namespace PDS.WITSMLstudio.Store.Data
             });
         }
 
-        private bool IsObjectReadable(EtpUri uri)
+        protected bool IsObjectReadable(EtpUri uri)
         {
             try
             {
@@ -302,6 +302,7 @@ namespace PDS.WITSMLstudio.Store.Data
 
                 SetDefaultValues(dataObject);
                 var uri = GetUri(dataObject);
+                CheckObjectAccess(AclAction.Create, uri);
                 transaction.SetContext(uri);
                 Logger.DebugFormat("Adding {0} with URI '{1}'", typeof(TObject).Name, uri);
 
@@ -335,6 +336,7 @@ namespace PDS.WITSMLstudio.Store.Data
 
                 UpdateDefaultValues(dataObject, parser);
                 var uri = GetUri(dataObject);
+                CheckObjectAccess(AclAction.Update, uri);
                 transaction.SetContext(uri);
                 Logger.DebugFormat("Updating {0} with URI '{1}'", typeof(TObject).Name, uri);
 
@@ -368,6 +370,7 @@ namespace PDS.WITSMLstudio.Store.Data
 
                 SetDefaultValues(dataObject);
                 var uri = GetUri(dataObject);
+                CheckObjectAccess(AclAction.Update, uri);
                 transaction.SetContext(uri);
                 Logger.DebugFormat("Replacing {0} with URI '{1}'", typeof(TObject).Name, uri);
 
@@ -400,6 +403,7 @@ namespace PDS.WITSMLstudio.Store.Data
                 var dataObject = Parse(element);
 
                 var uri = GetUri(dataObject);
+                CheckObjectAccess(AclAction.Delete, uri);
                 transaction.SetContext(uri);
                 Logger.DebugFormat("Deleting {0} with URI '{1}'", typeof(TObject).Name, uri);
 
