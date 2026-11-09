@@ -22,6 +22,7 @@ using System.Linq;
 using log4net;
 using PDS.WITSMLstudio.Framework;
 using PDS.WITSMLstudio.Store.Configuration;
+using System;
 
 namespace PDS.WITSMLstudio.Store.Data.Security
 {
@@ -41,6 +42,9 @@ namespace PDS.WITSMLstudio.Store.Data.Security
         /// <value>The user authorization adapters.</value>
         [ImportMany]
         public List<IUserAuthorizationAdapter> UserAuthorizationAdapters { get; set; }
+
+        [Import]
+        public IAclRuleStore AclRuleStore { get; set; }
 
         /// <summary>
         /// Verifies that the current user is authorized to execute the requested ETP action.
@@ -62,6 +66,26 @@ namespace PDS.WITSMLstudio.Store.Data.Security
             {
                 throw new WitsmlException(ErrorCodes.InsufficientOperationRights);
             }
+        }
+
+        /// <summary>
+        /// Enforces object ACL rules. An unconfigured hierarchy preserves legacy
+        /// endpoint authorization; once configured, absence of an Allow is denied.
+        /// </summary>
+        public void CheckObjectAccess(AclAction action, IEnumerable<AclResource> resourceHierarchy)
+        {
+            if (!WitsmlSettings.IsUserAuthorizationEnabled)
+                return;
+
+            if (AclRuleStore == null)
+                throw new WitsmlException(ErrorCodes.InsufficientOperationRights);
+
+            var resources = (resourceHierarchy ?? throw new ArgumentNullException("resourceHierarchy")).ToList();
+            var rules = AclRuleStore.GetRules(resources.Select(x => x.Id));
+            var decision = AclPolicyEvaluator.Evaluate(WitsmlOperationContext.Current.User, action, resources, rules);
+
+            if (decision.IsAclConfigured && !decision.IsAllowed)
+                throw new WitsmlException(ErrorCodes.InsufficientOperationRights);
         }
 
         /// <summary>
