@@ -222,7 +222,9 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
                 var providers = _providers[family.Key];
                 foreach (var provider in providers)
                 {
-                    var metadata = provider.GetChannelMetadata(Session.Adapter, family.ToArray());
+                    var metadata = provider.GetChannelMetadata(Session.Adapter, family.ToArray())
+                        .Where(IsChannelMetadataReadable)
+                        .ToList();
 
                     metadata.ForEach(m =>
                     {
@@ -284,6 +286,8 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
         /// <param name="channelRangeRequest">The channel range request.</param>
         protected override void HandleChannelRangeRequest(IMessageHeader header, ChannelRangeRequest channelRangeRequest)
         {
+            _streamingUsername = WitsmlOperationContext.Current.User;
+
             base.HandleChannelRangeRequest(header, channelRangeRequest);
 
             Request = header;
@@ -619,6 +623,29 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
 
                 // Delay to prevent CPU overhead
                 await Task.Delay(WitsmlSettings.StreamChannelDataDelayMilliseconds, token);
+            }
+        }
+
+        private bool IsChannelMetadataReadable(IChannelMetadataRecord metadata)
+        {
+            if (!WitsmlSettings.IsUserAuthorizationEnabled)
+                return true;
+
+            if (metadata == null || string.IsNullOrWhiteSpace(metadata.ChannelUri))
+                return false;
+
+            var channelUri = new EtpUri(metadata.ChannelUri);
+
+            try
+            {
+                Container.Resolve<IEtpDataProvider>(
+                    new ObjectName(channelUri.ObjectType, channelUri.Family, channelUri.Version))
+                    .CheckObjectAccess(WitsmlOperationContext.Current.User, AclAction.Read, channelUri);
+                return true;
+            }
+            catch (WitsmlException)
+            {
+                return false;
             }
         }
 
