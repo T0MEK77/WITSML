@@ -27,6 +27,7 @@ using Energistics.Etp.v12.Datatypes;
 using Energistics.Etp.v12.Datatypes.ChannelData;
 using Energistics.Etp.v12.Protocol.ChannelStreaming;
 using PDS.WITSMLstudio.Framework;
+using PDS.WITSMLstudio.Store;
 using PDS.WITSMLstudio.Data.Channels;
 using PDS.WITSMLstudio.Store.Data;
 using PDS.WITSMLstudio.Store.Data.Channels;
@@ -46,6 +47,7 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
 
         private readonly IContainer _container;
         private readonly IDictionary<EtpUri, ChannelDataBlock> _dataBlocks;
+        private string _streamingUsername;
         private readonly IDictionary<long, EtpUri> _channelParentUris;
         private Timer _flushIntervalTimer;
 
@@ -171,6 +173,7 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
         /// <param name="channelMetadata">The channel metadata.</param>
         protected virtual void EvaluateChannelMetadata(long messageId, ChannelMetadata channelMetadata)
         {
+            _streamingUsername = WitsmlOperationContext.Current.User;
             //var channelsToBeStopped = new List<ChannelMetadataRecord>();
             var channelIndex = new List<int>();
 
@@ -186,7 +189,7 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
                 {
                     var dataProvider = _container.Resolve<IEtpDataProvider>(
                         new ObjectName(uri.ObjectType, uri.Family, uri.Version));
-                    dataProvider.CheckObjectAccess(AclAction.Update, uri);
+                    dataProvider.CheckObjectAccess(_streamingUsername, AclAction.Update, uri);
                 }
                 catch (WitsmlException)
                 {
@@ -345,6 +348,11 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
         /// <param name="dataBlock">The data block.</param>
         protected virtual void ProcessDataBlock(EtpUri uri, ChannelDataBlock dataBlock)
         {
+            // Revalidate immediately before persistence; ACLs may have changed
+            // while the asynchronous channel data block was being buffered.
+            _container.Resolve<IEtpDataProvider>(
+                new ObjectName(uri.ObjectType, uri.Family, uri.Version))
+                .CheckObjectAccess(_streamingUsername, AclAction.Update, uri);
             var reader = dataBlock.GetReader();
             dataBlock.Clear();
 
