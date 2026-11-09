@@ -1,0 +1,47 @@
+name: ACL build and tests
+
+on:
+  push:
+    branches:
+      - feature/user-data-permissions
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: windows-2022
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Setup NuGet
+        uses: NuGet/setup-nuget@v2
+
+      - name: Restore NuGet packages
+        run: nuget restore src/PDS.WITSMLstudio.sln
+
+      - name: Build solution (.NET Framework 4.5.2)
+        run: msbuild src/PDS.WITSMLstudio.sln /m /p:Configuration=Release /p:Platform="Any CPU" /verbosity:minimal
+
+      - name: Run core unit tests
+        shell: pwsh
+        run: |
+          $testAssembly = "src/Core.UnitTest/bin/Release/PDS.WITSMLstudio.UnitTest.dll"
+          if (!(Test-Path $testAssembly)) {
+            throw "Core unit test assembly not found: $testAssembly"
+          }
+          $vstest = Get-ChildItem "${env:ProgramFiles(x86)}\\Microsoft Visual Studio\\Installer" -Filter vswhere.exe -Recurse | Select-Object -First 1
+          if ($null -eq $vstest) {
+            throw "vswhere.exe was not found."
+          }
+          $installPath = & $vstest.FullName -latest -products '*' -property installationPath
+          $runner = Join-Path $installPath "Common7\\IDE\\CommonExtensions\\Microsoft\\TestWindow\\vstest.console.exe"
+          if (!(Test-Path $runner)) {
+            throw "VSTest runner not found: $runner"
+          }
+          & $runner $testAssembly
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
