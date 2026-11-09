@@ -23,6 +23,7 @@ using Energistics.DataAccess;
 using Energistics.Etp.Common.Datatypes;
 using PDS.WITSMLstudio.Framework;
 using PDS.WITSMLstudio.Store.Configuration;
+using PDS.WITSMLstudio.Store.Data.Security;
 
 namespace PDS.WITSMLstudio.Store.Data
 {
@@ -69,7 +70,8 @@ namespace PDS.WITSMLstudio.Store.Data
             // Execute each query separately
             var results = childParsers
                 .SelectMany(p => DataAdapter.Query(p, responseContext))
-                .ToList(); // Fully evaluate before setting the error code.
+                .Where(item => IsObjectReadable(GetUri(item)))
+                .ToList(); // Filter unauthorized objects on the server before returning them.
 
             var collection = CreateCollection(results);
 
