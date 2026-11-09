@@ -170,7 +170,7 @@ namespace PDS.WITSMLstudio.Store.Security
             AclRuleIndexManager.EnsureUniqueIndex(collection);
 
             Assert.AreEqual(1, collection.CountDocuments(FilterDefinition<AclRule>.Empty));
-            Assert.AreEqual(1, AclRuleIndexManager.FindDuplicateKeys(collection).Count);
+            Assert.AreEqual(0, AclRuleIndexManager.FindDuplicateKeys(collection).Count);
             Assert.AreEqual(2, collection.Indexes.List().ToList().Count);
         }
 
