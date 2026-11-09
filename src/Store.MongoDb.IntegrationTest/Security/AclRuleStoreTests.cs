@@ -400,7 +400,12 @@ namespace PDS.WITSMLstudio.Store.Security
 
             // Recreate the store object and verify that the rule is read from MongoDB,
             // rather than from state held by the original store instance.
-            var newStore = new MongoDbAclRuleStore(_databaseProvider);
+            // Use a fresh MongoClient and store instance to exercise database-backed
+            // recovery without relying on the original client's in-memory state.
+            var restartedProvider = new TestDatabaseProvider(
+                new MongoClient(_databaseProvider.ConnectionString),
+                _databaseProvider.DatabaseName);
+            var newStore = new MongoDbAclRuleStore(restartedProvider);
             var result = newStore.GetRules(new[] { _resourceId });
 
             Assert.AreEqual(1, result.Count);
@@ -446,7 +451,7 @@ namespace PDS.WITSMLstudio.Store.Security
                 ConnectTimeout = TimeSpan.FromMilliseconds(500),
                 ServerSelectionTimeout = TimeSpan.FromSeconds(2)
             };
-            var provider = new UnavailableDatabaseProvider(new MongoClient(settings));
+            var provider = new TestDatabaseProvider(new MongoClient(settings), "AclUnavailableTest");
 
             // Store initialization verifies the unique index against MongoDB.
             // An unavailable database must fail closed instead of pretending ACL
@@ -454,13 +459,16 @@ namespace PDS.WITSMLstudio.Store.Security
             new MongoDbAclRuleStore(provider);
         }
 
-        private sealed class UnavailableDatabaseProvider : IDatabaseProvider
+        private sealed class TestDatabaseProvider : IDatabaseProvider
         {
             private readonly IMongoClient _client;
 
-            public UnavailableDatabaseProvider(IMongoClient client)
+            private readonly string _databaseName;
+
+            public TestDatabaseProvider(IMongoClient client, string databaseName)
             {
                 _client = client;
+                _databaseName = databaseName;
             }
 
             public IMongoClient Client
@@ -470,12 +478,12 @@ namespace PDS.WITSMLstudio.Store.Security
 
             public string ConnectionString
             {
-                get { return "mongodb://127.0.0.1:1"; }
+                get { return _client.Settings.Server.ToString(); }
             }
 
             public string DatabaseName
             {
-                get { return "AclUnavailableTest"; }
+                get { return _databaseName; }
             }
 
             public IMongoDatabase GetDatabase()
