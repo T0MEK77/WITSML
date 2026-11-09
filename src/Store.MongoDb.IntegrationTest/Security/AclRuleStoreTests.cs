@@ -4,6 +4,7 @@
 //-----------------------------------------------------------------------
 
 using System;
+using System.Linq;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using MongoDB.Driver;
 using PDS.WITSMLstudio.Store.Data;
@@ -18,6 +19,7 @@ namespace PDS.WITSMLstudio.Store.Security
         private IDatabaseProvider _databaseProvider;
         private MongoDbAclRuleStore _store;
         private string _resourceId;
+        private string _indexTestCollectionName;
 
         public TestContext TestContext { get; set; }
 
@@ -28,6 +30,7 @@ namespace PDS.WITSMLstudio.Store.Security
             _databaseProvider = devKit.Container.Resolve<IDatabaseProvider>();
             _store = new MongoDbAclRuleStore(_databaseProvider);
             _resourceId = "acl-test-" + Guid.NewGuid().ToString("N");
+            _indexTestCollectionName = "AclRuleIndexTest_" + Guid.NewGuid().ToString("N");
         }
 
         [TestCleanup]
@@ -39,6 +42,9 @@ namespace PDS.WITSMLstudio.Store.Security
             _databaseProvider.GetDatabase()
                 .GetCollection<AclRule>("AclRules")
                 .DeleteMany(Builders<AclRule>.Filter.Eq(x => x.ResourceId, _resourceId));
+
+            if (!string.IsNullOrEmpty(_indexTestCollectionName))
+                _databaseProvider.GetDatabase().DropCollection(_indexTestCollectionName);
         }
 
 
@@ -82,6 +88,90 @@ namespace PDS.WITSMLstudio.Store.Security
         public void MongoDbAclRuleStore_GetRules_Null_Resource_Ids_Throws_Validation_Exception()
         {
             _store.GetRules(null);
+        }
+
+        [TestMethod]
+        public void AclRuleIndexManager_Empty_Collection_Creates_Unique_Index_Idempotently()
+        {
+            var collection = _databaseProvider.GetDatabase()
+                .GetCollection<AclRule>(_indexTestCollectionName);
+
+            AclRuleIndexManager.EnsureUniqueIndex(collection);
+            AclRuleIndexManager.EnsureUniqueIndex(collection);
+
+            var indexes = collection.Indexes.List().ToList();
+            var aclIndex = indexes.Single(x => x["name"].AsString == AclRuleIndexManager.IndexName);
+
+            Assert.IsTrue(aclIndex["unique"].AsBoolean);
+            Assert.AreEqual(4, aclIndex["key"].AsBsonDocument.ElementCount);
+        }
+
+        [TestMethod]
+        public void AclRuleIndexManager_Duplicate_Keys_Are_Reported_Without_Deleting_Data_Or_Creating_Index()
+        {
+            var collection = _databaseProvider.GetDatabase()
+                .GetCollection<AclRule>(_indexTestCollectionName);
+            var rule = new AclRule
+            {
+                Username = "acl-duplicate-user",
+                ResourceId = "acl-duplicate-resource",
+                ResourceType = AclResourceType.Well,
+                Action = AclAction.Read,
+                Effect = AclEffect.Allow
+            };
+
+            collection.InsertMany(new[]
+            {
+                rule,
+                new AclRule
+                {
+                    Username = rule.Username,
+                    ResourceId = rule.ResourceId,
+                    ResourceType = rule.ResourceType,
+                    Action = rule.Action,
+                    Effect = AclEffect.Deny
+                }
+            });
+
+            var duplicates = AclRuleIndexManager.FindDuplicateKeys(collection);
+            Assert.AreEqual(1, duplicates.Count);
+            Assert.AreEqual(2, duplicates[0]["Count"].AsInt32);
+            Assert.AreEqual(2, collection.CountDocuments(FilterDefinition<AclRule>.Empty));
+
+            try
+            {
+                AclRuleIndexManager.EnsureUniqueIndex(collection);
+                Assert.Fail("A duplicate ACL key group must prevent unique-index creation.");
+            }
+            catch (InvalidOperationException exception)
+            {
+                StringAssert.Contains(exception.Message, "1 duplicate key group");
+            }
+
+            Assert.AreEqual(2, collection.CountDocuments(FilterDefinition<AclRule>.Empty));
+            Assert.AreEqual(1, collection.Indexes.List().ToList().Count);
+        }
+
+        [TestMethod]
+        public void AclRuleIndexManager_Existing_Unique_Data_Is_Preserved_When_Index_Is_Created()
+        {
+            var collection = _databaseProvider.GetDatabase()
+                .GetCollection<AclRule>(_indexTestCollectionName);
+            collection.InsertOne(new AclRule
+            {
+                Username = "acl-existing-user",
+                ResourceId = "acl-existing-resource",
+                ResourceType = AclResourceType.Wellbore,
+                Action = AclAction.Update,
+                Effect = AclEffect.Deny,
+                Inherit = true
+            });
+
+            AclRuleIndexManager.EnsureUniqueIndex(collection);
+
+            Assert.AreEqual(1, collection.CountDocuments(FilterDefinition<AclRule>.Empty));
+            Assert.AreEqual(1, AclRuleIndexManager.FindDuplicateKeys(collection).Count);
+            Assert.AreEqual(2, collection.Indexes.List().ToList().Count);
         }
 
         [TestMethod]
