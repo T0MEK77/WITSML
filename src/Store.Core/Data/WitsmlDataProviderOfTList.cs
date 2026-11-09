@@ -70,7 +70,7 @@ namespace PDS.WITSMLstudio.Store.Data
             // Execute each query separately
             var results = childParsers
                 .SelectMany(p => DataAdapter.Query(p, responseContext))
-                .Where(item => IsObjectReadable(GetUri(item)))
+                .Where(item => IsObjectReadable(GetUri(item), item))
                 .ToList(); // Filter unauthorized objects on the server before returning them.
 
             var collection = CreateCollection(results);
