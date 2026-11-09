@@ -135,6 +135,10 @@
       <Name>Framework</Name>
     </ProjectReference>
   </ItemGroup>
+    <ProjectReference Include="..\Store.Core\Store.Core.csproj">
+      <Project>{93FAAE2F-13AA-46DF-A94B-36155B51EBFA}</Project>
+      <Name>Store.Core</Name>
+    </ProjectReference>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.
