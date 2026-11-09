@@ -209,34 +209,38 @@ namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
         {
             lock (_syncRoot)
             {
-            var request = _requests.FirstOrDefault(x => x.Request.Context.Uri.EqualsIgnoreCase(uri));
-            if (request == null) return;
+                var requests = _requests
+                    .Where(x => x.Request.Context.Uri.EqualsIgnoreCase(uri))
+                    .ToList();
 
-            IMessageHeader header;
-            string username;
-            if (!_headers.TryGetValue(request.Request.RequestUuid, out header)
-                || !_subscribers.TryGetValue(request.Request.RequestUuid, out username)) return;
+                foreach (var request in requests)
+                {
+                    IMessageHeader header;
+                    string username;
+                    if (!_headers.TryGetValue(request.Request.RequestUuid, out header)
+                        || !_subscribers.TryGetValue(request.Request.RequestUuid, out username))
+                        continue;
 
-            var etpUri = new EtpUri(uri);
+                    var etpUri = new EtpUri(uri);
 
-            try
-            {
-                var provider = Container.Resolve<IEtpDataProvider>(
-                    new ObjectName(etpUri.ObjectType, etpUri.Family, etpUri.Version));
-                provider.CheckObjectAccess(username, AclAction.Read, etpUri, ParseNotificationObject(etpUri, dataObject));
-            }
-            catch (WitsmlException)
-            {
-                return;
-            }
+                    try
+                    {
+                        var provider = Container.Resolve<IEtpDataProvider>(
+                            new ObjectName(etpUri.ObjectType, etpUri.Family, etpUri.Version));
+                        provider.CheckObjectAccess(username, AclAction.Read, etpUri, ParseNotificationObject(etpUri, dataObject));
+                    }
+                    catch (WitsmlException)
+                    {
+                        continue;
+                    }
 
-            action(header, new ObjectChange
-            {
-                ChangeKind = changeKind,
-                ChangeTime = dateTime.ToUnixTimeMicroseconds(),
-                DataObject = GetDataObject(etpUri.ObjectType, etpUri.Family, etpUri.Version, dataObject, request.Request.IncludeObjectData)
-            });
-        
+                    action(header, new ObjectChange
+                    {
+                        ChangeKind = changeKind,
+                        ChangeTime = dateTime.ToUnixTimeMicroseconds(),
+                        DataObject = GetDataObject(etpUri.ObjectType, etpUri.Family, etpUri.Version, dataObject, request.Request.IncludeObjectData)
+                    });
+                }
             }
         }
 
