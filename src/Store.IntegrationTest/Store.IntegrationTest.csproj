@@ -1573,6 +1573,10 @@
       <Project>{692d27d9-2f4c-44a6-8d71-8b291e0dc1a3}</Project>
       <Name>Store.MongoDb</Name>
     </ProjectReference>
+    <ProjectReference Include="..\Store.Notifications\Store.Notifications.csproj">
+      <Project>{987B6304-B4A6-4D57-ACC3-7209175286A6}</Project>
+      <Name>Store.Notifications</Name>
+    </ProjectReference>
   </ItemGroup>
   <ItemGroup>
     <Content Include="TestData\49025109020000_13346_Slicing_Time_Log.xml">
