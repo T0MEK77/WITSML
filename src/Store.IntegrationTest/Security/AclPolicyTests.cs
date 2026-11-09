@@ -275,7 +275,7 @@ namespace PDS.WITSMLstudio.Store.Security
                     AclRuleStore = new TestAclRuleStore()
                 };
 
-                var exception = Assert.ThrowsException<WitsmlException>(() =>
+                var exception = AssertAccessDenied(() =>
                     provider.CheckObjectAccess(" ", AclAction.Read, Hierarchy()));
 
                 Assert.AreEqual(ErrorCodes.InsufficientOperationRights, exception.ErrorCode);
@@ -358,7 +358,7 @@ namespace PDS.WITSMLstudio.Store.Security
                     })
                 };
 
-                var exception = Assert.ThrowsException<WitsmlException>(() =>
+                var exception = AssertAccessDenied(() =>
                     provider.CheckObjectAccess("alice", AclAction.Read, Hierarchy()));
 
                 Assert.AreEqual(ErrorCodes.InsufficientOperationRights, exception.ErrorCode);
