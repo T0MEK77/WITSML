@@ -65,7 +65,7 @@ db.AclRules.replaceOne(
 
 The store creates the unique compound index
 `UX_AclRules_Username_Resource_Type_Action` when the ACL rule store is
-constructed. Before deploying this version against an existing database, run
+constructed. The store now performs a read-only duplicate-key aggregation before index creation; if conflicts are found, startup fails with the number and details of conflicting key groups, and no ACL documents are changed. Before deploying this version against an existing database, run
 the read-only duplicate preflight below against the configured WITSML database.
 Do not rely on application startup as a duplicate detector: MongoDB rejects a
 unique index when conflicting documents already exist.
