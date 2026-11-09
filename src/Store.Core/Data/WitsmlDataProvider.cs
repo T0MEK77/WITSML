@@ -272,7 +272,7 @@ namespace PDS.WITSMLstudio.Store.Data
                 && uri.ObjectType != "Well" && uri.ObjectType != "Wellbore"
                 && !string.IsNullOrWhiteSpace(uri.ObjectId))
             {
-                var storedObject = GetObjectForAcl(uri);
+                var storedObject = GetObjectForAcl(uri, action);
                 AddReferencedResource(hierarchy, storedObject, "Wellbore", AclResourceType.Wellbore);
 
                 var wellbore = GetReference(storedObject, "Wellbore");
@@ -294,14 +294,14 @@ namespace PDS.WITSMLstudio.Store.Data
                 && string.Equals(uri.Family, "witsml", StringComparison.OrdinalIgnoreCase)
                 && string.Equals(uri.Version, "2.0", StringComparison.OrdinalIgnoreCase))
             {
-                var storedWellbore = GetObjectForAcl(uri);
+                var storedWellbore = GetObjectForAcl(uri, action);
                 AddReferencedResource(hierarchy, storedWellbore, "Well", AclResourceType.Well);
             }
 
             authorization.CheckObjectAccess(action, hierarchy);
         }
 
-        private object GetObjectForAcl(EtpUri uri)
+        private object GetObjectForAcl(EtpUri uri, AclAction action)
         {
             var context = WitsmlOperationContext.Current;
             var requestObject = context == null ? null : context.DataObject;
@@ -312,8 +312,8 @@ namespace PDS.WITSMLstudio.Store.Data
                 var hasParentReference = GetReference(requestObject, "Wellbore") != null
                     || GetReference(requestObject, "Well") != null;
 
-                if (hasParentReference
-                    && string.Equals(requestId, uri.ObjectId, StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(requestId, uri.ObjectId, StringComparison.OrdinalIgnoreCase)
+                    && (action == AclAction.Create || hasParentReference))
                     return requestObject;
             }
 
