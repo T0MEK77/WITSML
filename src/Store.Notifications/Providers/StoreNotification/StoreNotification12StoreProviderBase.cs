@@ -43,6 +43,7 @@ namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
         private readonly Dictionary<Uuid, IMessageHeader> _headers;
         private readonly List<SubscribeNotification> _requests;
         private readonly Dictionary<Uuid, string> _subscribers;
+        private readonly object _syncRoot = new object();
 
         /// <summary>
         /// Initializes a new instance of the <see cref="StoreNotification12StoreProviderBase"/> class.
@@ -69,6 +70,8 @@ namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
         /// <param name="request">The request.</param>
         protected override void HandleSubscribeNotification(IMessageHeader header, SubscribeNotification request)
         {
+            lock (_syncRoot)
+            {
             CheckSubscriptionReadAccess(request.Request.Context.Uri);
             base.HandleSubscribeNotification(header, request);
             EnsureConnection();
@@ -83,6 +86,8 @@ namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
                 _subscribers[request.Request.RequestUuid] = WitsmlOperationContext.Current.User;
                 _requests.Add(request);
             }
+        
+            }
         }
 
         /// <summary>
@@ -92,6 +97,8 @@ namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
         /// <param name="request">The request.</param>
         protected override void HandleUnsubscribeNotification(IMessageHeader header, UnsubscribeNotification request)
         {
+            lock (_syncRoot)
+            {
             var message = _requests.FirstOrDefault(x => x.Request.RequestUuid.Equals(request.RequestUuid));
             if (message != null) EnsureSubscriptionOwner(_subscribers[message.Request.RequestUuid]);
 
@@ -106,6 +113,8 @@ namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
                 _requests.Remove(message);
                 _headers.Remove(message.Request.RequestUuid);
                 _subscribers.Remove(message.Request.RequestUuid);
+            }
+        
             }
         }
 
@@ -190,6 +199,8 @@ namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
 
         protected virtual void OnNotify(Func<IMessageHeader, ObjectChange, long> action, string uri, object dataObject, DateTime dateTime, ObjectChangeKind changeKind)
         {
+            lock (_syncRoot)
+            {
             var request = _requests.FirstOrDefault(x => x.Request.Context.Uri.EqualsIgnoreCase(uri));
             if (request == null) return;
 
@@ -217,6 +228,8 @@ namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
                 ChangeTime = dateTime.ToUnixTimeMicroseconds(),
                 DataObject = GetDataObject(etpUri.ObjectType, etpUri.Family, etpUri.Version, dataObject, request.Request.IncludeObjectData)
             });
+        
+            }
         }
 
         private static object ParseNotificationObject(EtpUri uri, object dataObject)
