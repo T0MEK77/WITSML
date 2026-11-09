@@ -7,6 +7,6 @@ namespace PDS.WITSMLstudio.Store.Data.Security
     {
         IList<AclRule> GetRules(IEnumerable<string> resourceIds);
         void Save(AclRule rule);
-        void Delete(string username, string resourceId, AclAction action);
+        void Delete(string username, string resourceId, AclResourceType resourceType, AclAction action);
     }
 }
