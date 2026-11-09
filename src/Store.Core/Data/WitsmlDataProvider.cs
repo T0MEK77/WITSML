@@ -20,6 +20,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Xml.Linq;
 using Energistics.DataAccess.WITSML200;
 using Energistics.Etp.Common.Datatypes;
@@ -260,7 +261,68 @@ namespace PDS.WITSMLstudio.Store.Data
         protected void CheckObjectAccess(AclAction action, EtpUri uri)
         {
             var authorization = Container.Resolve<IUserAuthorizationProvider>();
-            authorization.CheckObjectAccess(action, AclResourceHierarchy.FromUri(uri));
+            var hierarchy = AclResourceHierarchy.FromUri(uri);
+
+            // WITSML 2.0 object URIs are flat. Their Wellbore/Well ancestry is
+            // carried by DataObjectReference properties in the stored objects.
+            // Resolve those references on the server so inherited ACL rules
+            // cannot be bypassed by addressing the flat object URI directly.
+            if (uri != null && string.Equals(uri.Family, "witsml", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(uri.Version, "2.0", StringComparison.OrdinalIgnoreCase)
+                && uri.ObjectType != "Well" && uri.ObjectType != "Wellbore"
+                && !string.IsNullOrWhiteSpace(uri.ObjectId))
+            {
+                var storedObject = DataAdapter.Get(uri);
+                AddReferencedResource(hierarchy, storedObject, "Wellbore", AclResourceType.Wellbore);
+
+                var wellbore = GetReference(storedObject, "Wellbore");
+                var wellboreId = GetReferenceId(wellbore);
+                if (!string.IsNullOrWhiteSpace(wellboreId))
+                {
+                    var wellboreUri = new EtpUri(uri.EtpVersion,
+                        new EtpDataObjectType(uri.Family, uri.Version, "Wellbore"),
+                        uri.Dataspace, wellboreId);
+                    var wellboreAdapter = Container.Resolve<IWitsmlDataAdapter<Wellbore>>();
+                    var storedWellbore = wellboreAdapter.Get(wellboreUri);
+                    AddReferencedResource(hierarchy, storedWellbore, "Well", AclResourceType.Well);
+                }
+            }
+            else if (uri != null && string.Equals(uri.ObjectType, "Wellbore", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(uri.Family, "witsml", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(uri.Version, "2.0", StringComparison.OrdinalIgnoreCase))
+            {
+                var storedWellbore = DataAdapter.Get(uri);
+                AddReferencedResource(hierarchy, storedWellbore, "Well", AclResourceType.Well);
+            }
+
+            authorization.CheckObjectAccess(action, hierarchy);
+        }
+
+        private static void AddReferencedResource(IList<AclResource> hierarchy, object dataObject, string propertyName, AclResourceType resourceType)
+        {
+            var reference = GetReference(dataObject, propertyName);
+            var id = GetReferenceId(reference);
+            if (!string.IsNullOrWhiteSpace(id)
+                && !hierarchy.Any(x => x.Type == resourceType && string.Equals(x.Id, id, StringComparison.OrdinalIgnoreCase)))
+            {
+                hierarchy.Add(new AclResource { Id = id, Type = resourceType });
+            }
+        }
+
+        private static object GetReference(object dataObject, string propertyName)
+        {
+            if (dataObject == null) return null;
+            var property = dataObject.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public);
+            return property == null ? null : property.GetValue(dataObject, null);
+        }
+
+        private static string GetReferenceId(object reference)
+        {
+            if (reference == null) return null;
+            var property = reference.GetType().GetProperty("Uuid", BindingFlags.Instance | BindingFlags.Public)
+                ?? reference.GetType().GetProperty("UUID", BindingFlags.Instance | BindingFlags.Public);
+            var value = property == null ? null : property.GetValue(reference, null);
+            return value == null ? null : value.ToString();
         }
 
         protected bool IsObjectReadable(EtpUri uri)
