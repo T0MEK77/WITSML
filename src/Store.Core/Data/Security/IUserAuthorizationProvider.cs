@@ -38,5 +38,8 @@ namespace PDS.WITSMLstudio.Store.Data.Security
         /// <param name="action">Requested ACL action.</param>
         /// <param name="resourceHierarchy">Resources ordered from object to Well.</param>
         void CheckObjectAccess(AclAction action, System.Collections.Generic.IEnumerable<AclResource> resourceHierarchy);
+
+        /// <summary>Checks object access for an explicitly supplied authenticated user.</summary>
+        void CheckObjectAccess(string username, AclAction action, System.Collections.Generic.IEnumerable<AclResource> resourceHierarchy);
     }
 }
