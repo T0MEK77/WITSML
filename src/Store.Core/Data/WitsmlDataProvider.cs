@@ -258,7 +258,7 @@ namespace PDS.WITSMLstudio.Store.Data
             }
         }
 
-        protected void CheckObjectAccess(AclAction action, EtpUri uri)
+        public void CheckObjectAccess(AclAction action, EtpUri uri)
         {
             var authorization = Container.Resolve<IUserAuthorizationProvider>();
             var hierarchy = AclResourceHierarchy.FromUri(uri);
