@@ -284,6 +284,11 @@ namespace PDS.WITSMLstudio.Store.Data
                     var storedWellbore = wellboreAdapter.Get(wellboreUri);
                     AddReferencedResource(hierarchy, storedWellbore, "Well", AclResourceType.Well);
                 }
+                else
+                {
+                    // Some WITSML 2.0 object types reference a Well directly.
+                    AddReferencedResource(hierarchy, storedObject, "Well", AclResourceType.Well);
+                }
             }
             else if (uri != null && string.Equals(uri.ObjectType, "Wellbore", StringComparison.OrdinalIgnoreCase)
                 && string.Equals(uri.Family, "witsml", StringComparison.OrdinalIgnoreCase)
