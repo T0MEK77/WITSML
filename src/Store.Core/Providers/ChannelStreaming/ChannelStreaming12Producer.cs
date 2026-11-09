@@ -660,6 +660,7 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
                         // If our data list has reached the maximum size, then send it.
                         if (dataItemList.Count >= MaxDataItems)
                         {
+                            AuthorizeStreamingContexts(contextList, _streamingUsername);
                             await SendChannelData(dataItemList);
                             dataItemList.Clear();
                         }
@@ -679,6 +680,7 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
                 // Send any remaining channel data that has not been streamed.
                 if (dataItemList.Any())
                 {
+                    AuthorizeStreamingContexts(contextList, _streamingUsername);
                     await SendChannelData(dataItemList);
                 }
             }
