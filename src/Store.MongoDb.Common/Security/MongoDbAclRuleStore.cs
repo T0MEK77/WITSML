@@ -49,11 +49,12 @@ namespace PDS.WITSMLstudio.Store.Security
             Collection.ReplaceOne(filter, rule, new ReplaceOptions { IsUpsert = true });
         }
 
-        public void Delete(string username, string resourceId, AclAction action)
+        public void Delete(string username, string resourceId, AclResourceType resourceType, AclAction action)
         {
             var filter = Builders<AclRule>.Filter.And(
                 Builders<AclRule>.Filter.Eq(x => x.Username, username),
                 Builders<AclRule>.Filter.Eq(x => x.ResourceId, resourceId),
+                Builders<AclRule>.Filter.Eq(x => x.ResourceType, resourceType),
                 Builders<AclRule>.Filter.Eq(x => x.Action, action));
             Collection.DeleteOne(filter);
         }
