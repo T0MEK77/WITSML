@@ -258,6 +258,9 @@ namespace PDS.WITSMLstudio.Store.Data
             }
         }
 
+        /// <summary>Checks object ACL for the current authenticated user.</summary>
+        /// <param name="action">The requested operation.</param>
+        /// <param name="uri">The target object's URI.</param>
         public void CheckObjectAccess(AclAction action, EtpUri uri)
         {
             CheckObjectAccess(WitsmlOperationContext.Current.User, action, uri);
@@ -267,6 +270,10 @@ namespace PDS.WITSMLstudio.Store.Data
         /// Checks object ACL for a specified user. This overload is required by
         /// asynchronous ETP notification delivery after the original request ends.
         /// </summary>
+        /// <summary>Checks object ACL for an explicitly supplied authenticated user.</summary>
+        /// <param name="username">The authenticated username.</param>
+        /// <param name="action">The requested operation.</param>
+        /// <param name="uri">The target object's URI.</param>
         public void CheckObjectAccess(string username, AclAction action, EtpUri uri)
         {
             CheckObjectAccess(username, action, uri, null);
@@ -276,6 +283,11 @@ namespace PDS.WITSMLstudio.Store.Data
         /// Checks object ACL using an optional event/request payload to resolve
         /// WITSML 2.0 parent references even after an object has been deleted.
         /// </summary>
+        /// <summary>Checks object ACL using an optional object payload to resolve parent references.</summary>
+        /// <param name="username">The authenticated username.</param>
+        /// <param name="action">The requested operation.</param>
+        /// <param name="uri">The target object's URI.</param>
+        /// <param name="dataObject">An optional stored or request object containing ancestry references.</param>
         public void CheckObjectAccess(string username, AclAction action, EtpUri uri, object dataObject)
         {
             var authorization = Container.Resolve<IUserAuthorizationProvider>();
@@ -370,6 +382,10 @@ namespace PDS.WITSMLstudio.Store.Data
             return value == null ? null : value.ToString();
         }
 
+        /// <summary>Determines whether an object can be included in a readable listing.</summary>
+        /// <param name="uri">The object's URI.</param>
+        /// <param name="dataObject">The object, including any parent references.</param>
+        /// <returns><c>true</c> when the object is readable; otherwise, <c>false</c>.</returns>
         protected bool IsObjectReadable(EtpUri uri, TObject dataObject)
         {
             try
