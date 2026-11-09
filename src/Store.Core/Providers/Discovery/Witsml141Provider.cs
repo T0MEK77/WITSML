@@ -144,10 +144,15 @@ namespace PDS.WITSMLstudio.Store.Providers.Discovery
 
             // Discovery must not reveal child folders or counts beneath an
             // unreadable parent, even when the request only asks for metadata.
-            var resourceToCheck = !string.IsNullOrWhiteSpace(etpUri.ObjectId) ? etpUri :
-                (!string.IsNullOrWhiteSpace(parentUri.ObjectId) ? parentUri : null);
-            if (resourceToCheck != null && !IsObjectReadable(resourceToCheck))
+            if (!string.IsNullOrWhiteSpace(etpUri.ObjectId))
+            {
+                if (!IsObjectReadable(etpUri))
+                    return;
+            }
+            else if (!string.IsNullOrWhiteSpace(parentUri.ObjectId) && !IsObjectReadable(parentUri))
+            {
                 return;
+            }
             if (etpUri.IsBaseUri || (string.IsNullOrWhiteSpace(etpUri.ObjectId) && ObjectTypes.Well.EqualsIgnoreCase(etpUri.ObjectType)))
             {
                 _wellDataProvider.GetAll(etpUri)
