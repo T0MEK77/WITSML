@@ -23,11 +23,18 @@ jobs:
       - name: Setup NuGet
         uses: NuGet/setup-nuget@v2
 
+      - name: Install .NET Framework 4.0 reference assemblies
+        run: nuget install Microsoft.NETFramework.ReferenceAssemblies.net40 -Version 1.0.3 -OutputDirectory packages
+
       - name: Restore NuGet packages
         run: nuget restore src/PDS.WITSMLstudio.sln
 
       - name: Build solution (.NET Framework 4.5.2)
-        run: msbuild src/PDS.WITSMLstudio.sln /m /p:Configuration=Release /p:Platform="Any CPU" /verbosity:minimal
+        shell: pwsh
+        run: |
+          $referenceAssemblies = Resolve-Path "packages/Microsoft.NETFramework.ReferenceAssemblies.net40.1.0.3/build/.NETFramework"
+          msbuild src/PDS.WITSMLstudio.sln /m /p:Configuration=Release /p:Platform="Any CPU" /p:TargetFrameworkRootPath="$referenceAssemblies" /verbosity:minimal
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Run core unit tests
         shell: pwsh
