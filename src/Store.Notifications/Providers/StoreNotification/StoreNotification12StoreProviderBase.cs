@@ -174,6 +174,8 @@ namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
 
         protected virtual void OnNotifyDelete(string uri, object dataObject, DateTime dateTime)
         {
+            lock (_syncRoot)
+            {
             var request = _requests.FirstOrDefault(x => x.Request.Context.Uri.EqualsIgnoreCase(uri));
             if (request == null) return;
 
@@ -195,6 +197,8 @@ namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
             }
 
             ObjectDeleted(header, uri, dateTime.ToUnixTimeMicroseconds());
+        
+            }
         }
 
         protected virtual void OnNotify(Func<IMessageHeader, ObjectChange, long> action, string uri, object dataObject, DateTime dateTime, ObjectChangeKind changeKind)
