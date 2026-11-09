@@ -46,6 +46,7 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
     public class ChannelStreaming12Producer : ChannelStreamingProducerHandler, IStreamingProducer
     {
         private CancellationTokenSource _tokenSource;
+        private string _streamingUsername;
         private readonly List<IList<ChannelStreamingContext>> _channelStreamingContextLists;
         private readonly Dictionary<string, List<IChannelDataProvider>> _providers;
 
@@ -275,6 +276,8 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
         /// <param name="startStreaming">The start streaming.</param>
         protected override void HandleStartStreaming(IMessageHeader header, StartStreaming startStreaming)
         {
+            _streamingUsername = WitsmlOperationContext.Current.User;
+
             // No action needed if streaming already started
             if (_tokenSource != null) return;
 
@@ -531,21 +534,9 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
         /// <returns></returns>
         protected virtual async Task StreamChannelData(IList<ChannelStreamingContext> contextList, CancellationToken token)
         {
-            // Authorize every channel before opening the streaming loop. The
-            // channel URI is canonical and its parent chain carries Wellbore/Well ACLs.
-            foreach (var context in contextList)
-            {
-                var channelUri = !string.IsNullOrWhiteSpace(context.ChannelMetadata.ChannelUri)
-                    ? new EtpUri(context.ChannelMetadata.ChannelUri)
-                    : context.ParentUri;
+            AuthorizeStreamingContexts(contextList, _streamingUsername);
 
-                if (channelUri == null)
-                    throw new WitsmlException(ErrorCodes.InsufficientOperationRights);
-
-                Container.Resolve<IEtpDataProvider>(
-                    new ObjectName(channelUri.ObjectType, channelUri.Family, channelUri.Version))
-                    .CheckObjectAccess(AclAction.Read, channelUri);
-            }
+            // Authorization is repeated inside the streaming loop so revoked ACLs stop delivery.
 
             _channelStreamingContextLists.Add(contextList);
 
@@ -569,6 +560,7 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
             // Loop until there is a cancellation or all channals have been removed
             while (!IsStreamingStopped(contextList, ref token))
             {
+                AuthorizeStreamingContexts(contextList, _streamingUsername);
                 firstStart = !firstStart.HasValue;
 
                 var channelIds = contextList.Select(i => i.ChannelId).Distinct().ToArray();
@@ -642,6 +634,23 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
 
                 // Delay to prevent CPU overhead
                 await Task.Delay(WitsmlSettings.StreamChannelDataDelayMilliseconds, token);
+            }
+        }
+
+        private void AuthorizeStreamingContexts(IEnumerable<ChannelStreamingContext> contextList, string username)
+        {
+            foreach (var context in contextList)
+            {
+                var channelUri = !string.IsNullOrWhiteSpace(context.ChannelMetadata.ChannelUri)
+                    ? new EtpUri(context.ChannelMetadata.ChannelUri)
+                    : context.ParentUri;
+
+                if (channelUri == null)
+                    throw new WitsmlException(ErrorCodes.InsufficientOperationRights);
+
+                Container.Resolve<IEtpDataProvider>(
+                    new ObjectName(channelUri.ObjectType, channelUri.Family, channelUri.Version))
+                    .CheckObjectAccess(username, AclAction.Read, channelUri);
             }
         }
 
