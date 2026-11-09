@@ -98,6 +98,7 @@ namespace PDS.WITSMLstudio.Store.Data
         /// <returns>true if the data object exists; otherwise, false</returns>
         public virtual bool Exists(EtpUri uri)
         {
+            CheckObjectAccess(AclAction.Read, uri);
             return DataAdapter.Exists(uri);
         }
 
@@ -108,7 +109,7 @@ namespace PDS.WITSMLstudio.Store.Data
         /// <returns>The count of related data objects.</returns>
         public virtual int Count(EtpUri? parentUri)
         {
-            return DataAdapter.Count(parentUri);
+            return GetAll(parentUri).Count;
         }
 
         /// <summary>
@@ -118,7 +119,7 @@ namespace PDS.WITSMLstudio.Store.Data
         /// <returns>If there are any related data objects.</returns>
         public virtual bool Any(EtpUri? parentUri)
         {
-            return DataAdapter.Any(parentUri);
+            return GetAll(parentUri).Any();
         }
 
         /// <summary>
