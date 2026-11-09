@@ -63,6 +63,8 @@ namespace PDS.WITSMLstudio.Store.Data.Security
         /// </summary>
         public static IList<AclResource> FromUri(EtpUri uri)
         {
+            if (uri == null) throw new ArgumentNullException("uri");
+
             var resources = new List<AclResource>();
             var current = uri;
 
