@@ -279,9 +279,7 @@ namespace PDS.WITSMLstudio.Store.Data
                 var wellboreId = GetReferenceId(wellbore);
                 if (!string.IsNullOrWhiteSpace(wellboreId))
                 {
-                    var wellboreUri = new EtpUri(uri.EtpVersion,
-                        new EtpDataObjectType(uri.Family, uri.Version, "Wellbore"),
-                        uri.Dataspace, wellboreId);
+                    var wellboreUri = uri.Parent.Append(uri.Family, uri.Version, "Wellbore", wellboreId);
                     var wellboreAdapter = Container.Resolve<IWitsmlDataAdapter<Wellbore>>();
                     var storedWellbore = wellboreAdapter.Get(wellboreUri);
                     AddReferencedResource(hierarchy, storedWellbore, "Well", AclResourceType.Well);
