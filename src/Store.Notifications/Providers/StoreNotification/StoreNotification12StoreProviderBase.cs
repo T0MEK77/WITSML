@@ -69,6 +69,7 @@ namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
         /// <param name="request">The request.</param>
         protected override void HandleSubscribeNotification(IMessageHeader header, SubscribeNotification request)
         {
+            CheckSubscriptionReadAccess(request.Request.Context.Uri);
             base.HandleSubscribeNotification(header, request);
             EnsureConnection();
 
@@ -91,9 +92,10 @@ namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
         /// <param name="request">The request.</param>
         protected override void HandleUnsubscribeNotification(IMessageHeader header, UnsubscribeNotification request)
         {
-            base.HandleUnsubscribeNotification(header, request);
-
             var message = _requests.FirstOrDefault(x => x.Request.RequestUuid.Equals(request.RequestUuid));
+            EnsureSubscriptionOwner(message == null ? null : message.Request.RequestUuid, message == null ? null : _subscribers[message.Request.RequestUuid]);
+
+            base.HandleUnsubscribeNotification(header, request);
 
             if (message == null)
             {
@@ -105,6 +107,20 @@ namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
                 _headers.Remove(message.Request.RequestUuid);
                 _subscribers.Remove(message.Request.RequestUuid);
             }
+        }
+
+        private void CheckSubscriptionReadAccess(string uri)
+        {
+            var etpUri = new EtpUri(uri);
+            var provider = Container.Resolve<IEtpDataProvider>(
+                new ObjectName(etpUri.ObjectType, etpUri.Family, etpUri.Version));
+            provider.CheckObjectAccess(WitsmlOperationContext.Current.User, AclAction.Read, etpUri);
+        }
+
+        private void EnsureSubscriptionOwner(Uuid? requestId, string owner)
+        {
+            if (requestId.HasValue && !string.Equals(owner, WitsmlOperationContext.Current.User, StringComparison.OrdinalIgnoreCase))
+                throw new WitsmlException(ErrorCodes.InsufficientOperationRights);
         }
 
         /// <summary>
