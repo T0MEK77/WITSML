@@ -61,6 +61,75 @@ db.AclRules.replaceOne(
 );
 ```
 
+## Safe unique-index rollout
+
+The store creates the unique compound index
+`UX_AclRules_Username_Resource_Type_Action` when the ACL rule store is
+constructed. Before deploying this version against an existing database, run
+the read-only duplicate preflight below against the configured WITSML database.
+Do not rely on application startup as a duplicate detector: MongoDB rejects a
+unique index when conflicting documents already exist.
+
+The index key is the ACL identity tuple
+`(Username, ResourceId, ResourceType, Action)`. `Effect` and `Inherit`
+are deliberately not part of the key: changing either value updates the same
+rule rather than creating a second rule.
+
+Run this in `mongosh` (or the compatible MongoDB shell) after selecting the
+WITSML database:
+
+```javascript
+const duplicateAclKeys = db.AclRules.aggregate([
+  {
+    $group: {
+      _id: {
+        Username: "$Username",
+        ResourceId: "$ResourceId",
+        ResourceType: "$ResourceType",
+        Action: "$Action"
+      },
+      Count: { $sum: 1 },
+      DocumentIds: { $push: "$_id" }
+    }
+  },
+  { $match: { Count: { $gt: 1 } } },
+  { $sort: { Count: -1 } }
+]).toArray();
+
+print("Duplicate ACL key groups: " + duplicateAclKeys.length);
+duplicateAclKeys.forEach(function (item) {
+  printjson(item);
+});
+```
+
+This query is read-only. If it reports one or more groups:
+
+1. Stop the rollout; do not start/restart the application with the new ACL
+   store, because its unique-index creation will fail.
+2. Preserve a database backup and export the reported documents (including
+   their `_id`, `Effect`, and `Inherit` values) for an administrator to
+   review.
+3. Resolve each conflicting key explicitly according to the intended access
+   policy. Do not automatically delete, merge, or choose Allow/Deny: doing so
+   could silently change effective permissions. Retain one approved rule per
+   key only after the administrator has decided the intended `Effect` and
+   `Inherit` values.
+4. Re-run the preflight. Continue only when it reports zero duplicate groups.
+
+After a clean preflight, deploy/start the application. The store creates the
+unique index. Verify it with:
+
+```javascript
+db.AclRules.getIndexes().filter(function (index) {
+  return index.name === "UX_AclRules_Username_Resource_Type_Action";
+});
+```
+
+The returned index must have `unique: true` and the four key fields in the
+order `Username`, `ResourceId`, `ResourceType`, `Action`. Keep this
+preflight in the deployment runbook for existing installations; it does not
+modify ACL data or create the index itself.
+
 ## Evaluation rules
 
 - A rule on the requested object always applies to that object.
