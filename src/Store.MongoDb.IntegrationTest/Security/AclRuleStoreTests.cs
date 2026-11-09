@@ -85,6 +85,28 @@ namespace PDS.WITSMLstudio.Store.Security
         }
 
         [TestMethod]
+        public void MongoDbAclRuleStore_Concurrent_Save_Does_Not_Create_Duplicate_Rules()
+        {
+            System.Threading.Tasks.Parallel.For(0, 8, index =>
+            {
+                _store.Save(new AclRule
+                {
+                    Username = "acl-concurrent-user",
+                    ResourceId = _resourceId,
+                    ResourceType = AclResourceType.Well,
+                    Action = AclAction.Read,
+                    Effect = index % 2 == 0 ? AclEffect.Allow : AclEffect.Deny,
+                    Inherit = index % 2 == 0
+                });
+            });
+
+            var result = _store.GetRules(new[] { _resourceId })
+                .FindAll(x => x.Username == "acl-concurrent-user");
+
+            Assert.AreEqual(1, result.Count);
+        }
+
+        [TestMethod]
         public void MongoDbAclRuleStore_Save_And_GetRules_Persist_Rule()
         {
             var rule = new AclRule
