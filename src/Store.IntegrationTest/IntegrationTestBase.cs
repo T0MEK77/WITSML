@@ -372,7 +372,12 @@ namespace PDS.WITSMLstudio.Store
         /// </summary>
         /// <param name="retries">The number of retries.</param>
         /// <returns>The <see cref="OpenSession" /> message args.</returns>
-        protected async Task<ProtocolEventArgs<OpenSession>> RequestSessionAndAssert(int retries = 10)
+        protected Task<ProtocolEventArgs<OpenSession>> RequestSessionAndAssert(int retries = 10)
+        {
+            return RequestSessionAndAssert(retries, Protocols.ChannelStreaming, Protocols.Discovery, Protocols.Store);
+        }
+
+        protected async Task<ProtocolEventArgs<OpenSession>> RequestSessionAndAssert(int retries, params Protocols[] requestedProtocols)
         {
             try
             {
@@ -390,7 +395,7 @@ namespace PDS.WITSMLstudio.Store
                 var openArgs = await onOpenSession;
 
                 // Verify OpenSession and Supported Protocols
-                VerifySessionWithProtcols(openArgs, Protocols.ChannelStreaming, Protocols.Discovery, Protocols.Store);
+                VerifySessionWithProtcols(openArgs, requestedProtocols);
 
                 return openArgs;
             }
@@ -412,7 +417,7 @@ namespace PDS.WITSMLstudio.Store
                     _server.Start();
                 }
 
-                return await RequestSessionAndAssert(retries - 1);
+                return await RequestSessionAndAssert(retries - 1, requestedProtocols);
             }
         }
 
