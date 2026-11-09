@@ -126,7 +126,7 @@ jobs:
           & $runner $testAssembly
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Run ACL policy tests
+      - name: Run ACL policy and SOAP ACL integration tests
         shell: pwsh
         run: |
           $testAssembly = "src/Store.IntegrationTest/bin/Release/PDS.WITSMLstudio.Store.IntegrationTest.dll"
@@ -142,7 +142,7 @@ jobs:
           if (!(Test-Path $runner)) {
             throw "VSTest runner not found: $runner"
           }
-          & $runner $testAssembly /TestCaseFilter:"FullyQualifiedName~AclPolicyTests"
+          & $runner $testAssembly /TestCaseFilter:"FullyQualifiedName~AclPolicyTests|FullyQualifiedName~WitsmlStore141_Soap_CRUD_Enforces_Object_ACL"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Run ETP channel streaming ACL integration tests
