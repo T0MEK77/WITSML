@@ -87,6 +87,119 @@ namespace PDS.WITSMLstudio.Store.Data.Logs
                 handler => handler.GetPart(Log.GetUri().ToString(), "missing-part"));
         }
 
+        [TestMethod]
+        public async Task Log131_Etp11StoreNotification_Denies_Subscription_With_Explicit_Read_Deny()
+        {
+            AddParents();
+            DevKit.AddAndAssert<LogList, Log>(Log);
+
+            var aclRuleStore = DevKit.Container.Resolve<IAclRuleStore>();
+            var authorizationProvider = DevKit.Container.Resolve<IUserAuthorizationProvider>() as UserAuthorizationProvider;
+            Assert.IsNotNull(authorizationProvider);
+            var originalAuthorizationEnabled = WitsmlSettings.IsUserAuthorizationEnabled;
+            var originalAdapters = authorizationProvider.UserAuthorizationAdapters;
+            var username = TestSettings.Username;
+            var denyRule = new AclRule
+            {
+                Username = username,
+                ResourceId = Log.Uid,
+                ResourceType = AclResourceType.DataObject,
+                Action = AclAction.Read,
+                Effect = AclEffect.Deny
+            };
+
+            try
+            {
+                authorizationProvider.UserAuthorizationAdapters = new List<IUserAuthorizationAdapter> { new AllowEndpointAuthorizationAdapter() };
+                WitsmlSettings.IsUserAuthorizationEnabled = true;
+                await RequestSessionAndAssert();
+                aclRuleStore.Save(denyRule);
+
+                var handler = _client.Handler<Energistics.Etp.v11.Protocol.StoreNotification.IStoreNotificationCustomer>();
+                var onProtocolException = HandleAsync<IProtocolException>(x => handler.OnProtocolException += x);
+                handler.NotificationRequest(new Energistics.Etp.v11.Datatypes.Object.NotificationRequestRecord
+                {
+                    IncludeObjectData = true,
+                    ObjectTypes = new List<string>(),
+                    StartTime = System.DateTime.UtcNow,
+                    Uri = Log.GetUri().ToString(),
+                    Uuid = System.Guid.NewGuid().ToString()
+                });
+
+                var exception = await onProtocolException;
+                Assert.IsNotNull(exception?.Message);
+                Assert.AreEqual((int)ErrorCodes.InsufficientOperationRights, exception.Message.ErrorCode);
+            }
+            finally
+            {
+                aclRuleStore.Delete(username, Log.Uid, AclResourceType.DataObject, AclAction.Read);
+                WitsmlSettings.IsUserAuthorizationEnabled = originalAuthorizationEnabled;
+                authorizationProvider.UserAuthorizationAdapters = originalAdapters;
+            }
+        }
+
+        [TestMethod]
+        public async Task Log131_Etp12StoreNotification_Denies_Subscription_With_Explicit_Read_Deny()
+        {
+            AddParents();
+            DevKit.AddAndAssert<LogList, Log>(Log);
+
+            var aclRuleStore = DevKit.Container.Resolve<IAclRuleStore>();
+            var authorizationProvider = DevKit.Container.Resolve<IUserAuthorizationProvider>() as UserAuthorizationProvider;
+            Assert.IsNotNull(authorizationProvider);
+            var originalAuthorizationEnabled = WitsmlSettings.IsUserAuthorizationEnabled;
+            var originalAdapters = authorizationProvider.UserAuthorizationAdapters;
+            var username = TestSettings.Username;
+            var denyRule = new AclRule
+            {
+                Username = username,
+                ResourceId = Log.Uid,
+                ResourceType = AclResourceType.DataObject,
+                Action = AclAction.Read,
+                Effect = AclEffect.Deny
+            };
+
+            try
+            {
+                authorizationProvider.UserAuthorizationAdapters = new List<IUserAuthorizationAdapter> { new AllowEndpointAuthorizationAdapter() };
+                WitsmlSettings.IsUserAuthorizationEnabled = true;
+                await RequestSessionAndAssert();
+                aclRuleStore.Save(denyRule);
+
+                var handler = _client.Handler<Energistics.Etp.v12.Protocol.StoreNotification.IStoreNotificationCustomer>();
+                var onProtocolException = HandleAsync<IProtocolException>(x => handler.OnProtocolException += x);
+                handler.SubscribeNotifications(new List<Energistics.Etp.v12.Datatypes.Object.SubscriptionInfo>
+                {
+                    new Energistics.Etp.v12.Datatypes.Object.SubscriptionInfo
+                    {
+                        Format = Energistics.Etp.v12.Datatypes.Formats.Xml,
+                        Context = new Energistics.Etp.v12.Datatypes.Object.ContextInfo
+                        {
+                            Uri = Log.GetUri().ToString(),
+                            DataObjectTypes = new List<string>(),
+                            Depth = 999,
+                            IncludeSecondarySources = false,
+                            IncludeSecondaryTargets = false,
+                            NavigableEdges = Energistics.Etp.v12.Datatypes.Object.RelationshipKind.Primary
+                        },
+                        Scope = Energistics.Etp.v12.Datatypes.Object.ContextScopeKind.sourcesOrSelf,
+                        IncludeObjectData = true,
+                        RequestUuid = System.Guid.NewGuid()
+                    }
+                });
+
+                var exception = await onProtocolException;
+                Assert.IsNotNull(exception?.Message);
+                Assert.AreEqual((int)ErrorCodes.InsufficientOperationRights, exception.Message.ErrorCode);
+            }
+            finally
+            {
+                aclRuleStore.Delete(username, Log.Uid, AclResourceType.DataObject, AclAction.Read);
+                WitsmlSettings.IsUserAuthorizationEnabled = originalAuthorizationEnabled;
+                authorizationProvider.UserAuthorizationAdapters = originalAdapters;
+            }
+        }
+
         private async Task AssertGrowingObjectDeniedAfterSessionAsync(AclAction action, System.Action<IGrowingObjectCustomer> sendRequest)
         {
             AddParents();
