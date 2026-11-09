@@ -18,6 +18,7 @@
 
 using System.Threading.Tasks;
 using System.Collections.Generic;
+using System.Linq;
 using Energistics.Etp;
 using Energistics.Etp.Common;
 using Energistics.Etp.Common.Protocol.Core;
