@@ -109,6 +109,7 @@
     <Compile Include="Configuration\CapServer141ProviderTests.cs" />
     <Compile Include="Configuration\WitsmlValidator141Tests.cs" />
     <Compile Include="ContainerTests.cs" />
+    <Compile Include="Security\AclPolicyTests.cs" />
     <Compile Include="Data\Activities\Activity200EtpTests.cs" />
     <Compile Include="Data\Activities\Activity200EtpTests.generated.cs">
       <DependentUpon>Activity200EtpTests.cs</DependentUpon>
