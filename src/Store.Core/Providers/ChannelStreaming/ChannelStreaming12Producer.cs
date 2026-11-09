@@ -31,6 +31,7 @@ using Energistics.Etp.v12.Protocol.ChannelStreaming;
 using PDS.WITSMLstudio.Framework;
 using PDS.WITSMLstudio.Data.Channels;
 using PDS.WITSMLstudio.Store.Configuration;
+using PDS.WITSMLstudio.Store.Data;
 using PDS.WITSMLstudio.Store.Data.Channels;
 using PDS.WITSMLstudio.Store.Data.Security;
 
