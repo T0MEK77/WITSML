@@ -22,14 +22,7 @@ namespace PDS.WITSMLstudio.Store.Security
             if (databaseProvider == null) throw new ArgumentNullException("databaseProvider");
             _databaseProvider = databaseProvider;
 
-            var keys = Builders<AclRule>.IndexKeys
-                .Ascending(x => x.Username)
-                .Ascending(x => x.ResourceId)
-                .Ascending(x => x.ResourceType)
-                .Ascending(x => x.Action);
-            Collection.Indexes.CreateOne(new CreateIndexModel<AclRule>(
-                keys,
-                new CreateIndexOptions { Unique = true, Name = "UX_AclRules_Username_Resource_Type_Action" }));
+            AclRuleIndexManager.EnsureUniqueIndex(Collection);
         }
 
         private IMongoCollection<AclRule> Collection
