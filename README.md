@@ -315,6 +315,44 @@ Contains the WitsmlDataAdapter implementation for MongoDB.
 Integration tests for Store.MongoDb.
 
 ---
+### Object-level authorization (ACL)
+
+The Store supports optional object-level authorization for SOAP and ETP requests.
+Authorization is disabled by default to preserve existing deployments. Enable it
+in the deployed Store application's configuration (the effective
+`PDS.WITSMLstudio.Store.Properties.Settings` section):
+
+```xml
+<setting name="IsUserAuthorizationEnabled" serializeAs="String">
+  <value>True</value>
+</setting>
+```
+
+Administrator bypass is controlled exclusively by server-side configuration,
+not by client claims. Configure the comma- or semicolon-separated usernames
+in the application's `appSettings` section:
+
+```xml
+<appSettings>
+  <add key="AclAdministratorUsers" value="store-admin;security-admin" />
+</appSettings>
+```
+
+ACL rules are persisted in the MongoDB `AclRules` collection. Rules target a
+user (or the wildcard `*`), a resource type (`Well`, `Wellbore`, or
+`DataObject`), a resource identifier, an action (`Read`, `Create`,
+`Update`, or `Delete`), and an effect (`Allow` or `Deny`). Rules may
+inherit to descendant resources. An explicit Deny takes precedence over an
+Allow; when ACL applies to a resource hierarchy, access is denied unless an
+applicable Allow rule exists. Well and Wellbore permissions are inherited
+according to the configured rule's inheritance flag.
+
+When enabling ACL in an existing installation, provision and review the
+required rules before exposing the service to users. Keep at least one
+administrator username under server control and verify access through both
+SOAP and ETP clients. Leaving `IsUserAuthorizationEnabled` disabled retains
+the existing endpoint-level authorization behavior.
+
 ### Copyright and License
 Copyright &copy; 2018 PDS Americas LLC
 
