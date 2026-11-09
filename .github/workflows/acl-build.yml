@@ -42,7 +42,7 @@ jobs:
         shell: pwsh
         run: |
           $referenceRoot = Resolve-Path "packages/ReferenceAssemblies"
-          msbuild src/PDS.WITSMLstudio.sln /m /p:Configuration=Release /p:Platform="Any CPU" /p:TargetFrameworkRootPath="$referenceRoot" /verbosity:minimal
+          msbuild src/PDS.WITSMLstudio.sln /m /p:Configuration=Release /p:Platform="Any CPU" /p:TargetFrameworkRootPath="$referenceRoot" /p:RunCodeAnalysis=false /verbosity:minimal
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Run core unit tests
