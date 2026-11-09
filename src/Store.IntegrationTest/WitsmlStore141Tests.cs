@@ -229,7 +229,6 @@ namespace PDS.WITSMLstudio.Store
             Assert.IsNotNull(response);
             Assert.IsNull(response.Result);
         }
-    }
 
         [TestMethod]
         public void WitsmlStore141_Soap_CRUD_Enforces_Object_ACL()
@@ -340,4 +339,5 @@ namespace PDS.WITSMLstudio.Store
                 return true;
             }
         }
+    }
 }
