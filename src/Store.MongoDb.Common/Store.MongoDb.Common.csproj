@@ -108,6 +108,7 @@
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
       <DependentUpon>Settings.settings</DependentUpon>
     </Compile>
+    <Compile Include="Security\MongoDbAclRuleStore.cs" />
     <Compile Include="Security\DbUser.cs" />
     <Compile Include="Security\MongoDbMembershipProvider.cs" />
   </ItemGroup>
