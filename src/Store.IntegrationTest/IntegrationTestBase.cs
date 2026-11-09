@@ -152,13 +152,19 @@ namespace PDS.WITSMLstudio.Store
         /// <returns>A new <see cref="IEtpClient"/> instance.</returns>
         protected IEtpClient CreateClient(string url)
         {
+            return CreateClient(url, TestSettings.Username, TestSettings.Password);
+        }
+
+        /// <summary>
+        /// Creates an ETP client using explicit credentials.
+        /// </summary>
+        protected IEtpClient CreateClient(string url, string username, string password)
+        {
             var version = GetType().Assembly.GetName().Version.ToString();
-            var headers = Energistics.Etp.Security.Authorization.Basic(TestSettings.Username, TestSettings.Password);
+            var headers = Energistics.Etp.Security.Authorization.Basic(username, password);
             var etpSubProtocol = EtpSettings.Etp11SubProtocol;
 
-            var client = EtpFactory.CreateClient(url ?? TestSettings.EtpServerUrl, GetType().AssemblyQualifiedName, version, etpSubProtocol, headers);
-            
-            return client;
+            return EtpFactory.CreateClient(url ?? TestSettings.EtpServerUrl, GetType().AssemblyQualifiedName, version, etpSubProtocol, headers);
         }
 
         /// <summary>
