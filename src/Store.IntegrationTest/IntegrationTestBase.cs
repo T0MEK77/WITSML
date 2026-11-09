@@ -101,23 +101,37 @@ namespace PDS.WITSMLstudio.Store
             _server = CreateServer(port);
             _client = InitClient(CreateClient(url));
 
-            // Resolve dependencies early to avoid object disposed
-            var streaming = container.Resolve<IChannelStreamingProducer>();
-            var discovery = container.Resolve<IDiscoveryStore>();
-            var store = container.Resolve<IStoreStore>();
-            var growingObject11 = container.Resolve<Energistics.Etp.v11.Protocol.GrowingObject.IGrowingObjectStore>();
-            var growingObject12 = container.Resolve<Energistics.Etp.v12.Protocol.GrowingObject.IGrowingObjectStore>();
-            var storeNotification11 = container.Resolve<Energistics.Etp.v11.Protocol.StoreNotification.IStoreNotificationStore>();
-            var storeNotification12 = container.Resolve<Energistics.Etp.v12.Protocol.StoreNotification.IStoreNotificationStore>();
+            // Resolve and register protocol handlers for the negotiated ETP version.
+            // ETP 1.1 and 1.2 reuse protocol numbers, so their handlers must not
+            // coexist in one EtpSession (the DevKit routes messages by protocol number).
+            if (string.Equals(TestSettings.EtpVersion, "1.2", StringComparison.Ordinal))
+            {
+                var streaming = container.Resolve<Energistics.Etp.v12.Protocol.ChannelStreaming.IChannelStreamingProducer>();
+                var discovery = container.Resolve<Energistics.Etp.v12.Protocol.Discovery.IDiscoveryStore>();
+                var store = container.Resolve<Energistics.Etp.v12.Protocol.Store.IStoreStore>();
+                var growingObject = container.Resolve<Energistics.Etp.v12.Protocol.GrowingObject.IGrowingObjectStore>();
+                var storeNotification = container.Resolve<Energistics.Etp.v12.Protocol.StoreNotification.IStoreNotificationStore>();
 
-            // Register server handlers
-            _server.Register(() => streaming);
-            _server.Register(() => discovery);
-            _server.Register(() => store);
-            _server.Register(() => growingObject11);
-            _server.Register(() => growingObject12);
-            _server.Register(() => storeNotification11);
-            _server.Register(() => storeNotification12);
+                _server.Register(() => streaming);
+                _server.Register(() => discovery);
+                _server.Register(() => store);
+                _server.Register(() => growingObject);
+                _server.Register(() => storeNotification);
+            }
+            else
+            {
+                var streaming = container.Resolve<Energistics.Etp.v11.Protocol.ChannelStreaming.IChannelStreamingProducer>();
+                var discovery = container.Resolve<Energistics.Etp.v11.Protocol.Discovery.IDiscoveryStore>();
+                var store = container.Resolve<Energistics.Etp.v11.Protocol.Store.IStoreStore>();
+                var growingObject = container.Resolve<Energistics.Etp.v11.Protocol.GrowingObject.IGrowingObjectStore>();
+                var storeNotification = container.Resolve<Energistics.Etp.v11.Protocol.StoreNotification.IStoreNotificationStore>();
+
+                _server.Register(() => streaming);
+                _server.Register(() => discovery);
+                _server.Register(() => store);
+                _server.Register(() => growingObject);
+                _server.Register(() => storeNotification);
+            }
         }
 
         /// <summary>
@@ -165,7 +179,9 @@ namespace PDS.WITSMLstudio.Store
         {
             var version = GetType().Assembly.GetName().Version.ToString();
             var headers = Energistics.Etp.Security.Authorization.Basic(username, password);
-            var etpSubProtocol = EtpSettings.Etp11SubProtocol;
+            var etpSubProtocol = string.Equals(TestSettings.EtpVersion, "1.2", StringComparison.Ordinal)
+                ? EtpSettings.Etp12SubProtocol
+                : EtpSettings.Etp11SubProtocol;
 
             return EtpFactory.CreateClient(url ?? TestSettings.EtpServerUrl, GetType().AssemblyQualifiedName, version, etpSubProtocol, headers);
         }
