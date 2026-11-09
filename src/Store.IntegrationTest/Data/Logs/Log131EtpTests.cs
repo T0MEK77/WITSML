@@ -192,6 +192,105 @@ namespace PDS.WITSMLstudio.Store.Data.Logs
             }
         }
 
+        [TestMethod]
+        public async Task Log131_Etp11StoreNotification_Prevents_Other_User_From_Canceling_Subscription()
+        {
+            AddParents();
+            DevKit.AddAndAssert<LogList, Log>(Log);
+            var authorizationProvider = DevKit.Container.Resolve<IUserAuthorizationProvider>() as UserAuthorizationProvider;
+            Assert.IsNotNull(authorizationProvider);
+            var originalAuthorizationEnabled = WitsmlSettings.IsUserAuthorizationEnabled;
+            var originalAdapters = authorizationProvider.UserAuthorizationAdapters;
+            var requestUuid = System.Guid.NewGuid().ToString();
+            Energistics.Etp.IEtpClient otherClient = null;
+
+            try
+            {
+                authorizationProvider.UserAuthorizationAdapters = new List<IUserAuthorizationAdapter> { new AllowEndpointAuthorizationAdapter() };
+                WitsmlSettings.IsUserAuthorizationEnabled = true;
+                await RequestSessionAndAssert();
+
+                var ownerHandler = _client.Handler<Energistics.Etp.v11.Protocol.StoreNotification.IStoreNotificationCustomer>();
+                ownerHandler.NotificationRequest(new Energistics.Etp.v11.Datatypes.Object.NotificationRequestRecord
+                {
+                    IncludeObjectData = true,
+                    ObjectTypes = new List<string>(),
+                    StartTime = (long)((System.DateTime.UtcNow - new System.DateTime(1970, 1, 1, 0, 0, 0, System.DateTimeKind.Utc)).TotalMilliseconds * 1000L),
+                    Uri = Log.GetUri().ToString(),
+                    Uuid = requestUuid
+                });
+
+                otherClient = InitClient(CreateClient(_etpServerUrl, "acl-other-user", TestSettings.Password));
+                var otherSession = HandleAsync<OpenSession>(x => otherClient.Handler<ICoreClient>().OnOpenSession += x);
+                Assert.IsTrue(await otherClient.OpenAsyncWithTimeout());
+                await otherSession;
+
+                var otherHandler = otherClient.Handler<Energistics.Etp.v11.Protocol.StoreNotification.IStoreNotificationCustomer>();
+                var denied = HandleAsync<IProtocolException>(x => otherHandler.OnProtocolException += x);
+                otherHandler.CancelNotification(requestUuid);
+                var exception = await denied;
+                Assert.IsNotNull(exception?.Message);
+                Assert.AreEqual((int)ErrorCodes.InsufficientOperationRights, exception.Message.ErrorCode);
+            }
+            finally
+            {
+                otherClient?.Dispose();
+                WitsmlSettings.IsUserAuthorizationEnabled = originalAuthorizationEnabled;
+                authorizationProvider.UserAuthorizationAdapters = originalAdapters;
+            }
+        }
+
+        [TestMethod]
+        public async Task Log131_Etp12StoreNotification_Prevents_Other_User_From_Unsubscribing()
+        {
+            AddParents();
+            DevKit.AddAndAssert<LogList, Log>(Log);
+            var authorizationProvider = DevKit.Container.Resolve<IUserAuthorizationProvider>() as UserAuthorizationProvider;
+            Assert.IsNotNull(authorizationProvider);
+            var originalAuthorizationEnabled = WitsmlSettings.IsUserAuthorizationEnabled;
+            var originalAdapters = authorizationProvider.UserAuthorizationAdapters;
+            var requestUuid = System.Guid.NewGuid();
+            Energistics.Etp.IEtpClient otherClient = null;
+
+            try
+            {
+                authorizationProvider.UserAuthorizationAdapters = new List<IUserAuthorizationAdapter> { new AllowEndpointAuthorizationAdapter() };
+                WitsmlSettings.IsUserAuthorizationEnabled = true;
+                await RequestSessionAndAssert();
+
+                var ownerHandler = _client.Handler<Energistics.Etp.v12.Protocol.StoreNotification.IStoreNotificationCustomer>();
+                ownerHandler.SubscribeNotification(new Energistics.Etp.v12.Datatypes.Object.SubscriptionInfo
+                {
+                    Context = new Energistics.Etp.v12.Datatypes.Object.ContextInfo
+                    {
+                        Uri = Log.GetUri().ToString(),
+                        Depth = 0
+                    },
+                    Scope = Energistics.Etp.v12.Datatypes.Object.ContextScopeKind.self,
+                    IncludeObjectData = true,
+                    RequestUuid = requestUuid.ToUuid()
+                });
+
+                otherClient = InitClient(CreateClient(_etpServerUrl, "acl-other-user", TestSettings.Password));
+                var otherSession = HandleAsync<OpenSession>(x => otherClient.Handler<ICoreClient>().OnOpenSession += x);
+                Assert.IsTrue(await otherClient.OpenAsyncWithTimeout());
+                await otherSession;
+
+                var otherHandler = otherClient.Handler<Energistics.Etp.v12.Protocol.StoreNotification.IStoreNotificationCustomer>();
+                var denied = HandleAsync<IProtocolException>(x => otherHandler.OnProtocolException += x);
+                otherHandler.UnsubscribeNotifications(requestUuid);
+                var exception = await denied;
+                Assert.IsNotNull(exception?.Message);
+                Assert.AreEqual((int)ErrorCodes.InsufficientOperationRights, exception.Message.ErrorCode);
+            }
+            finally
+            {
+                otherClient?.Dispose();
+                WitsmlSettings.IsUserAuthorizationEnabled = originalAuthorizationEnabled;
+                authorizationProvider.UserAuthorizationAdapters = originalAdapters;
+            }
+        }
+
         private async Task AssertGrowingObjectDeniedAfterSessionAsync(AclAction action, System.Action<IGrowingObjectCustomer> sendRequest)
         {
             AddParents();
