@@ -68,6 +68,7 @@ namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
         /// <param name="request">The request.</param>
         protected override void HandleNotificationRequest(IMessageHeader header, NotificationRequest request)
         {
+            CheckSubscriptionReadAccess(request.Request.Uri);
             base.HandleNotificationRequest(header, request);
             EnsureConnection();
 
@@ -90,9 +91,10 @@ namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
         /// <param name="request">The request.</param>
         protected override void HandleCancelNotification(IMessageHeader header, CancelNotification request)
         {
-            base.HandleCancelNotification(header, request);
-
             var message = _requests.FirstOrDefault(x => x.Request.Uuid.EqualsIgnoreCase(request.RequestUuid));
+            EnsureSubscriptionOwner(message == null ? null : message.Request.Uuid, message == null ? null : _subscribers[message.Request.Uuid]);
+
+            base.HandleCancelNotification(header, request);
 
             if (message == null)
             {
@@ -104,6 +106,20 @@ namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
                 _headers.Remove(message.Request.Uuid);
                 _subscribers.Remove(message.Request.Uuid);
             }
+        }
+
+        private void CheckSubscriptionReadAccess(string uri)
+        {
+            var etpUri = new EtpUri(uri);
+            var provider = Container.Resolve<IEtpDataProvider>(
+                new ObjectName(etpUri.ObjectType, etpUri.Family, etpUri.Version));
+            provider.CheckObjectAccess(WitsmlOperationContext.Current.User, AclAction.Read, etpUri);
+        }
+
+        private void EnsureSubscriptionOwner(string requestId, string owner)
+        {
+            if (requestId != null && !string.Equals(owner, WitsmlOperationContext.Current.User, StringComparison.OrdinalIgnoreCase))
+                throw new WitsmlException(ErrorCodes.InsufficientOperationRights);
         }
 
         /// <summary>
