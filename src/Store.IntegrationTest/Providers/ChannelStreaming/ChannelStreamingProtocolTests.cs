@@ -125,6 +125,69 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
             }
         }
 
+        [TestMethod]
+        public async Task IChannelStreamingProducer_ChannelStreamingStart_Rechecks_Read_Acl_After_Stream_Start()
+        {
+            var aclRuleStore = DevKit.Container.Resolve<IAclRuleStore>();
+            var authorizationProvider = DevKit.Container.Resolve<IUserAuthorizationProvider>() as UserAuthorizationProvider;
+            Assert.IsNotNull(authorizationProvider);
+
+            var originalAuthorizationEnabled = WitsmlSettings.IsUserAuthorizationEnabled;
+            var originalAdapters = authorizationProvider.UserAuthorizationAdapters;
+            var username = TestSettings.Username;
+            var denyRule = new AclRule
+            {
+                Username = username,
+                ResourceId = TestUris.LogMd.ObjectId,
+                ResourceType = AclResourceType.DataObject,
+                Action = AclAction.Read,
+                Effect = AclEffect.Deny,
+                Inherit = true
+            };
+
+            try
+            {
+                authorizationProvider.UserAuthorizationAdapters = new List<IUserAuthorizationAdapter>
+                {
+                    new AllowEndpointAuthorizationAdapter()
+                };
+                WitsmlSettings.IsUserAuthorizationEnabled = true;
+
+                await RequestSessionAndAssert();
+
+                var handler = _client.Handler<IChannelStreamingConsumer>();
+                var uri = TestUris.LogMd.Append("logCurveInfo", "HKLD").ToString();
+                var onChannelMetadata = HandleMultiPartAsync<ChannelMetadata>(x => handler.OnChannelMetadata += x);
+                handler.Start();
+                var describeMessageId = handler.ChannelDescribe(new List<string> { uri });
+                var metadata = await onChannelMetadata;
+                var channels = VerifyChannelMetadata(metadata, new List<string> { uri }, describeMessageId);
+                var onChannelData = HandleMultiPartAsync<ChannelData>(x => handler.OnChannelData += x, 1);
+                var onProtocolException = HandleAsync<IProtocolException>(x => handler.OnProtocolException += x);
+
+                handler.ChannelStreamingStart(new List<ChannelStreamingInfo>
+                {
+                    ToChannelStreamingInfo(channels.Single())
+                });
+
+                var firstData = await onChannelData;
+                Assert.IsNotNull(firstData);
+                Assert.IsTrue(firstData.SelectMany(x => x.Message.Data).Any());
+
+                aclRuleStore.Save(denyRule);
+
+                var exception = await onProtocolException;
+                Assert.IsNotNull(exception?.Message);
+                Assert.AreEqual((int)ErrorCodes.InsufficientOperationRights, exception.Message.ErrorCode);
+            }
+            finally
+            {
+                aclRuleStore.Delete(username, TestUris.LogMd.ObjectId, AclResourceType.DataObject, AclAction.Read);
+                WitsmlSettings.IsUserAuthorizationEnabled = originalAuthorizationEnabled;
+                authorizationProvider.UserAuthorizationAdapters = originalAdapters;
+            }
+        }
+
         private sealed class AllowEndpointAuthorizationAdapter : IUserAuthorizationAdapter
         {
             public bool IsAuthorized(string username, RequestContext request, WitsmlEndpointTypes endpointType)
