@@ -144,10 +144,10 @@ namespace PDS.WITSMLstudio.Store.Providers.Discovery
             // object. WITSML 2.0 ancestry is resolved by the typed data provider.
             if (!string.IsNullOrWhiteSpace(etpUri.ObjectId))
             {
-                if (!IsObjectReadable(etpUri))
+                if (!IsObjectReadable(etpUri, null))
                     return;
             }
-            else if (!string.IsNullOrWhiteSpace(parentUri.ObjectId) && !IsObjectReadable(parentUri))
+            else if (!string.IsNullOrWhiteSpace(parentUri.ObjectId) && !IsObjectReadable(parentUri, null))
             {
                 return;
             }
