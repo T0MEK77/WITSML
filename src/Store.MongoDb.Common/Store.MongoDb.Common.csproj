@@ -134,11 +134,11 @@
       <Project>{FAE228AA-4917-4B02-B239-0A24DF883898}</Project>
       <Name>Framework</Name>
     </ProjectReference>
-  </ItemGroup>
     <ProjectReference Include="..\Store.Core\Store.Core.csproj">
       <Project>{93FAAE2F-13AA-46DF-A94B-36155B51EBFA}</Project>
       <Name>Store.Core</Name>
     </ProjectReference>
+  </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.
