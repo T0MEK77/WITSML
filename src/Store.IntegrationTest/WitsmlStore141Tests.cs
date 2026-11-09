@@ -301,6 +301,21 @@ namespace PDS.WITSMLstudio.Store
                     isNotNull: false);
                 Assert.IsNull(readResult);
 
+                // A matching explicit Allow must permit SOAP reads in the same
+                // configured scope after the explicit Deny has been removed.
+                aclRuleStore.Delete(username, well.Uid, AclResourceType.Well, AclAction.Read);
+                aclRuleStore.Save(new AclRule
+                {
+                    Username = username,
+                    ResourceId = well.Uid,
+                    ResourceType = AclResourceType.Well,
+                    Action = AclAction.Read,
+                    Effect = AclEffect.Allow
+                });
+                var allowedRead = _devKit.QueryAndAssert<WellList, Well>(
+                    new Well { Uid = well.Uid });
+                Assert.IsNotNull(allowedRead);
+
                 var updateResponse = _devKit.Update<WellList, Well>(new Well
                 {
                     Uid = well.Uid,
