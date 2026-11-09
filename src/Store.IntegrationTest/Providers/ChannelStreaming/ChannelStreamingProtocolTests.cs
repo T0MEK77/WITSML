@@ -180,6 +180,63 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
             }
         }
 
+        [TestMethod]
+        public async Task IChannelStreamingProducer_ChannelRangeRequest_Denies_Read_After_Metadata_Was_Described()
+        {
+            var aclRuleStore = DevKit.Container.Resolve<IAclRuleStore>();
+            var authorizationProvider = DevKit.Container.Resolve<IUserAuthorizationProvider>() as UserAuthorizationProvider;
+            Assert.IsNotNull(authorizationProvider);
+
+            var originalAuthorizationEnabled = WitsmlSettings.IsUserAuthorizationEnabled;
+            var originalAdapters = authorizationProvider.UserAuthorizationAdapters;
+            var username = "*";
+            var denyRule = new AclRule
+            {
+                Username = username,
+                ResourceId = TestUris.LogMd.ObjectId,
+                ResourceType = AclResourceType.DataObject,
+                Action = AclAction.Read,
+                Effect = AclEffect.Deny,
+                Inherit = true
+            };
+
+            try
+            {
+                authorizationProvider.UserAuthorizationAdapters = new List<IUserAuthorizationAdapter>
+                {
+                    new AllowEndpointAuthorizationAdapter()
+                };
+                WitsmlSettings.IsUserAuthorizationEnabled = true;
+
+                await RequestSessionAndAssert(10, Protocols.ChannelStreaming, Protocols.Discovery, Protocols.Store, Protocols.StoreNotification, Protocols.GrowingObject);
+
+                var handler = _client.Handler<IChannelStreamingConsumer>();
+                var uri = TestUris.LogMd.Append("logCurveInfo", "HKLD").ToString();
+                var onChannelMetadata = HandleMultiPartAsync<ChannelMetadata>(x => handler.OnChannelMetadata += x);
+                handler.Start();
+                var describeMessageId = handler.ChannelDescribe(new List<string> { uri });
+                var metadata = await onChannelMetadata;
+                var channel = VerifyChannelMetadata(metadata, new List<string> { uri }, describeMessageId).Single();
+
+                // The client already knows the channel ID, but access is revoked before requesting its data.
+                aclRuleStore.Save(denyRule);
+
+                var onChannelData = HandleAsync<ChannelData>(x => handler.OnChannelData += x);
+                handler.ChannelRangeRequest(new List<ChannelRangeInfo>
+                {
+                    ToChannelRangeInfo(channel, ToScale(channel, 4000.0), ToScale(channel, 4001.0))
+                });
+
+                await Should.ThrowAsync<TimeoutException>(onChannelData);
+            }
+            finally
+            {
+                aclRuleStore.Delete(username, TestUris.LogMd.ObjectId, AclResourceType.DataObject, AclAction.Read);
+                WitsmlSettings.IsUserAuthorizationEnabled = originalAuthorizationEnabled;
+                authorizationProvider.UserAuthorizationAdapters = originalAdapters;
+            }
+        }
+
         private sealed class AllowEndpointAuthorizationAdapter : IUserAuthorizationAdapter
         {
             public bool IsAuthorized(string username, RequestContext request, WitsmlEndpointTypes endpointType)
