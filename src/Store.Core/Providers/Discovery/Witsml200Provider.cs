@@ -273,10 +273,10 @@ namespace PDS.WITSMLstudio.Store.Providers.Discovery
         {
             try
             {
-                _container.Resolve<IUserAuthorizationProvider>().CheckObjectAccess(
-                    AclAction.Read,
-                    AclResourceHierarchy.FromUri(uri));
-                return true;
+                // Delegate to the typed data provider so WITSML 2.0
+                // reference-based Wellbore/Well ancestry is resolved by the
+                // same ACL path used for direct object reads.
+                return GetDataProvider(uri.ObjectType).Exists(uri);
             }
             catch (WitsmlException)
             {
