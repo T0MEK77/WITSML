@@ -113,6 +113,7 @@
     <Compile Include="Providers\StoreNotification\StoreNotificationProducer.cs" />
     <Compile Include="Providers\StoreNotification\StoreNotification11StoreProvider.cs" />
     <Compile Include="Providers\StoreNotification\StoreNotification11StoreProviderBase.cs" />
+    <Compile Include="Providers\StoreNotification\StoreNotificationSubscriptionOwnerRegistry.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="app.config" />
