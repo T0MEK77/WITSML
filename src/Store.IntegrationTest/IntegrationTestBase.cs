@@ -193,14 +193,25 @@ namespace PDS.WITSMLstudio.Store
         /// <returns>The ETP client.</returns>
         protected IEtpClient InitClient(IEtpClient client)
         {
-            // Register client handlers
-            client.Register<IChannelStreamingConsumer, ChannelStreamingConsumerHandler>();
-            client.Register<IDiscoveryCustomer, DiscoveryCustomerHandler>();
-            client.Register<IStoreCustomer, StoreCustomerHandler>();
-            client.Register<Energistics.Etp.v11.Protocol.GrowingObject.IGrowingObjectCustomer, Energistics.Etp.v11.Protocol.GrowingObject.GrowingObjectCustomerHandler>();
-            client.Register<Energistics.Etp.v12.Protocol.GrowingObject.IGrowingObjectCustomer, Energistics.Etp.v12.Protocol.GrowingObject.GrowingObjectCustomerHandler>();
-            client.Register<Energistics.Etp.v11.Protocol.StoreNotification.IStoreNotificationCustomer, Energistics.Etp.v11.Protocol.StoreNotification.StoreNotificationCustomerHandler>();
-            client.Register<Energistics.Etp.v12.Protocol.StoreNotification.IStoreNotificationCustomer, Energistics.Etp.v12.Protocol.StoreNotification.StoreNotificationCustomerHandler>();
+            // Register only handlers for the negotiated ETP version. ETP 1.1 and
+            // 1.2 reuse protocol numbers; registering both versions leaves the
+            // last handler in the session's protocol-number lookup table.
+            if (string.Equals(TestSettings.EtpVersion, "1.2", StringComparison.Ordinal))
+            {
+                client.Register<Energistics.Etp.v12.Protocol.ChannelStreaming.IChannelStreamingConsumer, Energistics.Etp.v12.Protocol.ChannelStreaming.ChannelStreamingConsumerHandler>();
+                client.Register<Energistics.Etp.v12.Protocol.Discovery.IDiscoveryCustomer, Energistics.Etp.v12.Protocol.Discovery.DiscoveryCustomerHandler>();
+                client.Register<Energistics.Etp.v12.Protocol.Store.IStoreCustomer, Energistics.Etp.v12.Protocol.Store.StoreCustomerHandler>();
+                client.Register<Energistics.Etp.v12.Protocol.GrowingObject.IGrowingObjectCustomer, Energistics.Etp.v12.Protocol.GrowingObject.GrowingObjectCustomerHandler>();
+                client.Register<Energistics.Etp.v12.Protocol.StoreNotification.IStoreNotificationCustomer, Energistics.Etp.v12.Protocol.StoreNotification.StoreNotificationCustomerHandler>();
+            }
+            else
+            {
+                client.Register<IChannelStreamingConsumer, ChannelStreamingConsumerHandler>();
+                client.Register<IDiscoveryCustomer, DiscoveryCustomerHandler>();
+                client.Register<IStoreCustomer, StoreCustomerHandler>();
+                client.Register<Energistics.Etp.v11.Protocol.GrowingObject.IGrowingObjectCustomer, Energistics.Etp.v11.Protocol.GrowingObject.GrowingObjectCustomerHandler>();
+                client.Register<Energistics.Etp.v11.Protocol.StoreNotification.IStoreNotificationCustomer, Energistics.Etp.v11.Protocol.StoreNotification.StoreNotificationCustomerHandler>();
+            }
 
             return client;
         }

@@ -72,7 +72,15 @@ namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
         {
             lock (_syncRoot)
             {
-            CheckSubscriptionReadAccess(request.Request.Context.Uri);
+            try
+            {
+                CheckSubscriptionReadAccess(request.Request.Context.Uri);
+            }
+            catch (WitsmlException exception)
+            {
+                ProtocolException((int)exception.ErrorCode, exception.Message, header.MessageId);
+                return;
+            }
             base.HandleSubscribeNotification(header, request);
             EnsureConnection();
 
@@ -100,7 +108,18 @@ namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
             lock (_syncRoot)
             {
             var message = _requests.FirstOrDefault(x => x.Request.RequestUuid.Equals(request.RequestUuid));
-            if (message != null) EnsureSubscriptionOwner(_subscribers[message.Request.RequestUuid]);
+            if (message != null)
+            {
+                try
+                {
+                    EnsureSubscriptionOwner(_subscribers[message.Request.RequestUuid]);
+                }
+                catch (WitsmlException exception)
+                {
+                    ProtocolException((int)exception.ErrorCode, exception.Message, header.MessageId);
+                    return;
+                }
+            }
 
             base.HandleUnsubscribeNotification(header, request);
 

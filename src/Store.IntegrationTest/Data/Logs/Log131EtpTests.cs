@@ -86,7 +86,7 @@ namespace PDS.WITSMLstudio.Store.Data.Logs
         public async Task Log131_GrowingObjectGetRange_Denies_Explicit_Read_Deny()
         {
             await AssertGrowingObjectDeniedAsync(AclAction.Read,
-                handler => handler.GrowingObjectGetRange(Log.GetUri().ToString(), 0, 10, null, null));
+                handler => handler.GrowingObjectGetRange(Log.GetUri().ToString(), 0L, 10L, null, null));
         }
 
         [TestMethod]
@@ -107,7 +107,7 @@ namespace PDS.WITSMLstudio.Store.Data.Logs
         public async Task Log131_GrowingObjectDeleteRange_Denies_Explicit_Delete_Deny()
         {
             await AssertGrowingObjectDeniedAsync(AclAction.Delete,
-                handler => handler.GrowingObjectDeleteRange(Log.GetUri().ToString(), 0, 10, null, null));
+                handler => handler.GrowingObjectDeleteRange(Log.GetUri().ToString(), 0L, 10L, null, null));
         }
 
         [TestMethod]
@@ -462,7 +462,7 @@ namespace PDS.WITSMLstudio.Store.Data.Logs
         public async Task Log131_Etp12GetPartsByRange_Denies_Explicit_Read_Deny()
         {
             await AssertGrowingObject12DeniedAsync(AclAction.Read,
-                handler => handler.GetPartsByRange(Log.GetUri().ToString(), 0, 10, null, null));
+                handler => handler.GetPartsByRange(Log.GetUri().ToString(), 0L, 10L, null, null));
         }
 
         [TestMethod]
@@ -483,7 +483,7 @@ namespace PDS.WITSMLstudio.Store.Data.Logs
         public async Task Log131_Etp12DeletePartsByRange_Denies_Explicit_Delete_Deny()
         {
             await AssertGrowingObject12DeniedAsync(AclAction.Delete,
-                handler => handler.DeletePartsByRange(Log.GetUri().ToString(), 0, 10, null, null));
+                handler => handler.DeletePartsByRange(Log.GetUri().ToString(), 0L, 10L, null, null));
         }
 
         private async Task AssertGrowingObject12DeniedAsync(AclAction action, System.Action<GrowingObject12Customer> sendRequest)
