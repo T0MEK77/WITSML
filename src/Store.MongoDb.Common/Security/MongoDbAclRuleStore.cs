@@ -76,7 +76,9 @@ namespace PDS.WITSMLstudio.Store.Security
                     || exception.WriteError.Category != ServerErrorCategory.DuplicateKey)
                     throw;
 
-                Collection.UpdateOne(filter, update, new UpdateOptions { IsUpsert = false });
+                var retryResult = Collection.UpdateOne(filter, update, new UpdateOptions { IsUpsert = false });
+                if (retryResult.MatchedCount == 0)
+                    throw;
             }
         }
 
