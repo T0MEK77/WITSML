@@ -167,6 +167,8 @@ namespace PDS.WITSMLstudio.Store
             client.Register<IChannelStreamingConsumer, ChannelStreamingConsumerHandler>();
             client.Register<IDiscoveryCustomer, DiscoveryCustomerHandler>();
             client.Register<IStoreCustomer, StoreCustomerHandler>();
+            client.Register<Energistics.Etp.v11.Protocol.GrowingObject.IGrowingObjectCustomer, Energistics.Etp.v11.Protocol.GrowingObject.GrowingObjectCustomerHandler>();
+            client.Register<Energistics.Etp.v12.Protocol.GrowingObject.IGrowingObjectCustomer, Energistics.Etp.v12.Protocol.GrowingObject.GrowingObjectCustomerHandler>();
 
             return client;
         }
