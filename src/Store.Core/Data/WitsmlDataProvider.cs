@@ -26,6 +26,7 @@ using Energistics.Etp.Common.Datatypes;
 using Energistics.Etp.Common.Datatypes.Object;
 using log4net;
 using PDS.WITSMLstudio.Framework;
+using PDS.WITSMLstudio.Store.Data.Security;
 
 namespace PDS.WITSMLstudio.Store.Data
 {
@@ -137,7 +138,8 @@ namespace PDS.WITSMLstudio.Store.Data
         /// <returns>A collection of data objects.</returns>
         public virtual List<TObject> GetAll(EtpUri? parentUri = null)
         {
-            return DataAdapter.GetAll(parentUri);
+            var items = DataAdapter.GetAll(parentUri);
+            return items.Where(item => IsObjectReadable(GetUri(item))).ToList();
         }
 
         /// <summary>
@@ -157,6 +159,7 @@ namespace PDS.WITSMLstudio.Store.Data
         /// <returns>The data object instance.</returns>
         public virtual TObject Get(EtpUri uri)
         {
+            CheckObjectAccess(AclAction.Read, uri);
             return DataAdapter.Get(uri);
         }
 
@@ -186,10 +189,12 @@ namespace PDS.WITSMLstudio.Store.Data
 
             if (!string.IsNullOrWhiteSpace(uri.ObjectId) && Exists(uri))
             {
+                CheckObjectAccess(AclAction.Update, uri);
                 Replace(parser);
             }
             else
             {
+                CheckObjectAccess(AclAction.Create, uri);
                 Add(parser);
             }
         }
@@ -200,6 +205,7 @@ namespace PDS.WITSMLstudio.Store.Data
         /// <param name="uri">The data object URI.</param>
         public virtual void Delete(EtpUri uri)
         {
+            CheckObjectAccess(AclAction.Delete, uri);
             using (var transaction = DataAdapter.GetTransaction())
             {
                 transaction.SetContext(uri);
@@ -247,6 +253,28 @@ namespace PDS.WITSMLstudio.Store.Data
                 Add(parser);
 
                 transaction.Commit();
+            }
+        }
+
+        private void CheckObjectAccess(AclAction action, EtpUri uri)
+        {
+            var authorization = Container.Resolve<IUserAuthorizationProvider>();
+            authorization.CheckObjectAccess(action, new[]
+            {
+                new AclResource { Id = uri.ObjectId, Type = AclResourceType.DataObject }
+            });
+        }
+
+        private bool IsObjectReadable(EtpUri uri)
+        {
+            try
+            {
+                CheckObjectAccess(AclAction.Read, uri);
+                return true;
+            }
+            catch (WitsmlException)
+            {
+                return false;
             }
         }
 
