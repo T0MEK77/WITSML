@@ -73,7 +73,10 @@ namespace PDS.WITSMLstudio.Store
             FallbackServerUrl = $"{settings["FallbackServerUrl"]}";
             EtpServerUrl = $"{settings["EtpServerUrl"]}";
             //SoapServerUrl = $"{settings["SoapServerUrl"]}";
-            Username = $"{settings["Username"]}";
+            var configuredUsername = settings.Contains("Username") ? settings["Username"] : null;
+            Username = configuredUsername == null || string.IsNullOrWhiteSpace(configuredUsername.ToString())
+                ? Settings.Default.Username
+                : configuredUsername.ToString();
             Password = $"{settings["Password"]}";
             EtpVersion = $"{settings["EtpVersion"]}";
 
