@@ -70,6 +70,6 @@ db.AclRules.replaceOne(
 - A hierarchy with no applicable ACL rule retains the legacy authorization behavior.
 - SOAP query results, ETP object reads/listings/counts, cascade deletes, channel streaming and Store Notification delivery are checked server-side.
 
-## Important scope note
+## Hierarchy scope
 
-WITSML 1.3.1/1.4.1 hierarchical object URIs provide the Well → Wellbore → DataObject ancestry used by the current resolver. WITSML 2.0 uses flat object URIs for many data objects; its Well/Wellbore relationships are represented by data-object references rather than URI path segments. Direct DataObject rules work there, but full Well/Wellbore inheritance for those flat WITSML 2.0 URIs still requires resolving the stored parent references and is not claimed as complete by this implementation.
+The resolver follows the canonical ETP URI parent chain, ordered from the requested object to its Wellbore and Well ancestors. This matches the hierarchical URIs used by the Store's WITSML 1.3.1, 1.4.1 and WITSML 2.0 Well/Wellbore data providers. If a resource URI does not encode a Wellbore/Well ancestor, only the resource levels actually present in that URI can participate in inheritance; relationships that are not represented in the URI path are not inferred from arbitrary object fields.
