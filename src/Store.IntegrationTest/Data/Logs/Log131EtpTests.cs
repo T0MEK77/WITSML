@@ -22,6 +22,7 @@ using Energistics.Etp;
 using Energistics.Etp.Common;
 using Energistics.Etp.Common.Protocol.Core;
 using Energistics.Etp.v11.Protocol.GrowingObject;
+using GrowingObject12Customer = Energistics.Etp.v12.Protocol.GrowingObject.IGrowingObjectCustomer;
 using PDS.WITSMLstudio.Store.Configuration;
 using PDS.WITSMLstudio.Store.Data.Security;
 using Energistics.DataAccess.WITSML131;
@@ -106,6 +107,92 @@ namespace PDS.WITSMLstudio.Store.Data.Logs
                 await RequestSessionAndAssert();
 
                 var handler = _client.Handler<IGrowingObjectCustomer>();
+                var onProtocolException = HandleAsync<IProtocolException>(
+                    x => handler.OnProtocolException += x);
+
+                sendRequest(handler);
+
+                var exception = await onProtocolException;
+                Assert.IsNotNull(exception?.Message);
+                Assert.AreEqual((int)ErrorCodes.InsufficientOperationRights, exception.Message.ErrorCode);
+            }
+            finally
+            {
+                aclRuleStore.Delete(username, Log.Uid, AclResourceType.DataObject, action);
+                WitsmlSettings.IsUserAuthorizationEnabled = originalAuthorizationEnabled;
+                authorizationProvider.UserAuthorizationAdapters = originalAdapters;
+            }
+        }
+
+        [TestMethod]
+        public async Task Log131_Etp12GetPart_Denies_Explicit_Read_Deny()
+        {
+            await AssertGrowingObject12DeniedAsync(AclAction.Read,
+                handler => handler.GetPart(Log.GetUri().ToString(), "missing-part"));
+        }
+
+        [TestMethod]
+        public async Task Log131_Etp12GetPartsByRange_Denies_Explicit_Read_Deny()
+        {
+            await AssertGrowingObject12DeniedAsync(AclAction.Read,
+                handler => handler.GetPartsByRange(Log.GetUri().ToString(), 0, 10, null, null));
+        }
+
+        [TestMethod]
+        public async Task Log131_Etp12PutPart_Denies_Explicit_Update_Deny()
+        {
+            await AssertGrowingObject12DeniedAsync(AclAction.Update,
+                handler => handler.PutPart(Log.GetUri().ToString(), "part", "text/xml", new byte[0]));
+        }
+
+        [TestMethod]
+        public async Task Log131_Etp12DeletePart_Denies_Explicit_Delete_Deny()
+        {
+            await AssertGrowingObject12DeniedAsync(AclAction.Delete,
+                handler => handler.DeletePart(Log.GetUri().ToString(), "missing-part"));
+        }
+
+        [TestMethod]
+        public async Task Log131_Etp12DeletePartsByRange_Denies_Explicit_Delete_Deny()
+        {
+            await AssertGrowingObject12DeniedAsync(AclAction.Delete,
+                handler => handler.DeletePartsByRange(Log.GetUri().ToString(), 0, 10, null, null));
+        }
+
+        private async Task AssertGrowingObject12DeniedAsync(AclAction action, System.Action<GrowingObject12Customer> sendRequest)
+        {
+            AddParents();
+            DevKit.AddAndAssert<LogList, Log>(Log);
+
+            var aclRuleStore = DevKit.Container.Resolve<IAclRuleStore>();
+            var authorizationProvider = DevKit.Container.Resolve<IUserAuthorizationProvider>() as UserAuthorizationProvider;
+            Assert.IsNotNull(authorizationProvider);
+
+            var originalAuthorizationEnabled = WitsmlSettings.IsUserAuthorizationEnabled;
+            var originalAdapters = authorizationProvider.UserAuthorizationAdapters;
+            var username = TestSettings.Username;
+
+            var denyRule = new AclRule
+            {
+                Username = username,
+                ResourceId = Log.Uid,
+                ResourceType = AclResourceType.DataObject,
+                Action = action,
+                Effect = AclEffect.Deny
+            };
+
+            try
+            {
+                authorizationProvider.UserAuthorizationAdapters = new List<IUserAuthorizationAdapter>
+                {
+                    new AllowEndpointAuthorizationAdapter()
+                };
+                WitsmlSettings.IsUserAuthorizationEnabled = true;
+                aclRuleStore.Save(denyRule);
+
+                await RequestSessionAndAssert();
+
+                var handler = _client.Handler<GrowingObject12Customer>();
                 var onProtocolException = HandleAsync<IProtocolException>(
                     x => handler.OnProtocolException += x);
 
