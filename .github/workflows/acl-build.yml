@@ -161,5 +161,5 @@ jobs:
           if (!(Test-Path $runner)) {
             throw "VSTest runner not found: $runner"
           }
-          & $runner $testAssembly /TestCaseFilter:"FullyQualifiedName~IChannelStreamingProducer_ChannelDescribe_Denies_Explicit_Read_Deny|FullyQualifiedName~IChannelStreamingProducer_ChannelStreamingStart_Rechecks_Read_Acl_After_Stream_Start"
+          & $runner $testAssembly /TestCaseFilter:"FullyQualifiedName~IChannelStreamingProducer_ChannelDescribe_Denies_Explicit_Read_Deny|FullyQualifiedName~IChannelStreamingProducer_ChannelStreamingStart_Rechecks_Read_Acl_After_Stream_Start|FullyQualifiedName~IChannelStreamingProducer_ChannelRangeRequest_Denies_Read_After_Metadata_Was_Described"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
