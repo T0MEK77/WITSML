@@ -168,9 +168,10 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
 
                 aclRuleStore.Save(denyRule);
 
-                var exception = await onProtocolException;
-                Assert.IsNotNull(exception?.Message);
-                Assert.AreEqual((int)ErrorCodes.InsufficientOperationRights, exception.Message.ErrorCode);
+                var additionalData = HandleAsync<ChannelData>(
+                    x => handler.OnChannelData += x,
+                    WitsmlSettings.StreamChannelDataDelayMilliseconds * 3);
+                await Should.ThrowAsync<TimeoutException>(additionalData);
             }
             finally
             {
