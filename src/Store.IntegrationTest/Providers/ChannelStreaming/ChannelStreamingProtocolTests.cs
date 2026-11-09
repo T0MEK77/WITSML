@@ -69,7 +69,7 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
         }
 
         [TestMethod]
-        public async Task IChannelStreamingProducer_ChannelStreamingStart_Denies_Explicit_Read_Deny()
+        public async Task IChannelStreamingProducer_ChannelDescribe_Denies_Explicit_Read_Deny()
         {
             var aclRuleStore = DevKit.Container.Resolve<IAclRuleStore>();
             var authorizationProvider = DevKit.Container.Resolve<IUserAuthorizationProvider>() as UserAuthorizationProvider;
@@ -103,19 +103,11 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
                 var uri = TestUris.LogMd.Append("logCurveInfo", "HKLD").ToString();
                 var onChannelMetadata = HandleMultiPartAsync<ChannelMetadata>(x => handler.OnChannelMetadata += x);
                 handler.Start();
-                var describeMessageId = handler.ChannelDescribe(new List<string> { uri });
+                handler.ChannelDescribe(new List<string> { uri });
                 var metadata = await onChannelMetadata;
-                var channels = VerifyChannelMetadata(metadata, new List<string> { uri }, describeMessageId);
-                var onProtocolException = HandleAsync<IProtocolException>(x => handler.OnProtocolException += x);
 
-                handler.ChannelStreamingStart(new List<ChannelStreamingInfo>
-                {
-                    ToChannelStreamingInfo(channels.Single())
-                });
-
-                var exception = await onProtocolException;
-                Assert.IsNotNull(exception?.Message);
-                Assert.AreEqual((int)ErrorCodes.InsufficientOperationRights, exception.Message.ErrorCode);
+                // A denied channel must not be exposed through ChannelMetadata.
+                Assert.AreEqual(0, metadata.SelectMany(x => x.Message.Channels).Count());
             }
             finally
             {
