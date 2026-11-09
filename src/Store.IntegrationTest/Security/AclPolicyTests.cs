@@ -404,6 +404,74 @@ namespace PDS.WITSMLstudio.Store.Security
         }
 
 
+
+        [TestMethod]
+        public void UserAuthorizationProvider_Deny_Takes_Precedence_Over_Applicable_Allow()
+        {
+            var originalEnabled = WitsmlSettings.IsUserAuthorizationEnabled;
+            var originalAdministrators = WitsmlSettings.AclAdministratorUsers;
+
+            try
+            {
+                WitsmlSettings.IsUserAuthorizationEnabled = true;
+                WitsmlSettings.AclAdministratorUsers = string.Empty;
+
+                var provider = new UserAuthorizationProvider
+                {
+                    AclRuleStore = new TestAclRuleStore(
+                        new AclRule
+                        {
+                            Username = "alice",
+                            ResourceId = "object-1",
+                            ResourceType = AclResourceType.DataObject,
+                            Action = AclAction.Read,
+                            Effect = AclEffect.Allow
+                        },
+                        new AclRule
+                        {
+                            Username = "*",
+                            ResourceId = "well-1",
+                            ResourceType = AclResourceType.Well,
+                            Action = AclAction.Read,
+                            Effect = AclEffect.Deny,
+                            Inherit = true
+                        })
+                };
+
+                var exception = AssertAccessDenied(() =>
+                    provider.CheckObjectAccess("alice", AclAction.Read, Hierarchy()));
+
+                Assert.AreEqual(ErrorCodes.InsufficientOperationRights, exception.ErrorCode);
+            }
+            finally
+            {
+                WitsmlSettings.IsUserAuthorizationEnabled = originalEnabled;
+                WitsmlSettings.AclAdministratorUsers = originalAdministrators;
+            }
+        }
+
+        [TestMethod]
+        public void UserAuthorizationProvider_Skips_Object_Acl_When_Authorization_Is_Disabled()
+        {
+            var originalEnabled = WitsmlSettings.IsUserAuthorizationEnabled;
+            var originalAdministrators = WitsmlSettings.AclAdministratorUsers;
+
+            try
+            {
+                WitsmlSettings.IsUserAuthorizationEnabled = false;
+                WitsmlSettings.AclAdministratorUsers = string.Empty;
+
+                var provider = new UserAuthorizationProvider { AclRuleStore = null };
+
+                provider.CheckObjectAccess(string.Empty, AclAction.Delete, Hierarchy());
+            }
+            finally
+            {
+                WitsmlSettings.IsUserAuthorizationEnabled = originalEnabled;
+                WitsmlSettings.AclAdministratorUsers = originalAdministrators;
+            }
+        }
+
         private static WitsmlException AssertAccessDenied(Action action)
         {
             try
