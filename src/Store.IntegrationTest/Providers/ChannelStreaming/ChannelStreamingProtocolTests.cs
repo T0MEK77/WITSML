@@ -126,7 +126,7 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
 
             var originalAuthorizationEnabled = WitsmlSettings.IsUserAuthorizationEnabled;
             var originalAdapters = authorizationProvider.UserAuthorizationAdapters;
-            var username = TestSettings.Username;
+            var username = "*";
             var denyRule = new AclRule
             {
                 Username = username,
@@ -145,7 +145,7 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
                 };
                 WitsmlSettings.IsUserAuthorizationEnabled = true;
 
-                await RequestSessionAndAssert();
+                await RequestSessionAndAssert(10, Protocols.ChannelStreaming, Protocols.Discovery, Protocols.Store, Protocols.StoreNotification, Protocols.GrowingObject);
 
                 var handler = _client.Handler<IChannelStreamingConsumer>();
                 var uri = TestUris.LogMd.Append("logCurveInfo", "HKLD").ToString();
