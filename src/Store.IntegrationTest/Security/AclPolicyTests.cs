@@ -92,6 +92,58 @@ namespace PDS.WITSMLstudio.Store.Security
         }
 
         [TestMethod]
+        public void Evaluate_Allows_Inherited_Wellbore_Rule_For_DataObject()
+        {
+            var rules = new[]
+            {
+                new AclRule
+                {
+                    Username = "alice",
+                    ResourceId = "wellbore-1",
+                    ResourceType = AclResourceType.Wellbore,
+                    Action = AclAction.Update,
+                    Effect = AclEffect.Allow,
+                    Inherit = true
+                }
+            };
+
+            var result = AclPolicyEvaluator.Evaluate("alice", AclAction.Update, Hierarchy(), rules);
+
+            Assert.IsTrue(result.IsAclConfigured);
+            Assert.IsTrue(result.IsAllowed);
+        }
+
+        [TestMethod]
+        public void Evaluate_Denies_When_Well_Ancestor_Explicitly_Denies()
+        {
+            var rules = new[]
+            {
+                new AclRule
+                {
+                    Username = "*",
+                    ResourceId = "well-1",
+                    ResourceType = AclResourceType.Well,
+                    Action = AclAction.Delete,
+                    Effect = AclEffect.Deny,
+                    Inherit = true
+                },
+                new AclRule
+                {
+                    Username = "alice",
+                    ResourceId = "object-1",
+                    ResourceType = AclResourceType.DataObject,
+                    Action = AclAction.Delete,
+                    Effect = AclEffect.Allow
+                }
+            };
+
+            var result = AclPolicyEvaluator.Evaluate("alice", AclAction.Delete, Hierarchy(), rules);
+
+            Assert.IsTrue(result.IsAclConfigured);
+            Assert.IsFalse(result.IsAllowed);
+        }
+
+        [TestMethod]
         public void Evaluate_Denies_By_Default_Inside_Configured_Scope()
         {
             var rules = new[]
