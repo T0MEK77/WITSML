@@ -33,5 +33,10 @@ namespace PDS.WITSMLstudio.Store.Data.Security
         /// Verifies that the current user is authorized to execute the requested SOAP action.
         /// </summary>
         void CheckSoapAccess();
+
+        /// <summary>Checks access to a WITSML object and its parent hierarchy.</summary>
+        /// <param name="action">Requested ACL action.</param>
+        /// <param name="resourceHierarchy">Resources ordered from object to Well.</param>
+        void CheckObjectAccess(AclAction action, System.Collections.Generic.IEnumerable<AclResource> resourceHierarchy);
     }
 }
