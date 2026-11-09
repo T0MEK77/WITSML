@@ -113,7 +113,7 @@ namespace PDS.WITSMLstudio.Store.Data.Logs
             {
                 authorizationProvider.UserAuthorizationAdapters = new List<IUserAuthorizationAdapter> { new AllowEndpointAuthorizationAdapter() };
                 WitsmlSettings.IsUserAuthorizationEnabled = true;
-                await RequestSessionAndAssert();
+                await RequestSessionAndAssert(10, Protocols.ChannelStreaming, Protocols.Discovery, Protocols.Store, Protocols.GrowingObject, Protocols.StoreNotification);
                 aclRuleStore.Save(denyRule);
 
                 var handler = _client.Handler<Energistics.Etp.v11.Protocol.StoreNotification.IStoreNotificationCustomer>();
@@ -164,7 +164,7 @@ namespace PDS.WITSMLstudio.Store.Data.Logs
             {
                 authorizationProvider.UserAuthorizationAdapters = new List<IUserAuthorizationAdapter> { new AllowEndpointAuthorizationAdapter() };
                 WitsmlSettings.IsUserAuthorizationEnabled = true;
-                await RequestSessionAndAssert();
+                await RequestSessionAndAssert(10, Protocols.ChannelStreaming, Protocols.Discovery, Protocols.Store, Protocols.GrowingObject, Protocols.StoreNotification);
                 aclRuleStore.Save(denyRule);
 
                 var handler = _client.Handler<Energistics.Etp.v12.Protocol.StoreNotification.IStoreNotificationCustomer>();
@@ -209,7 +209,7 @@ namespace PDS.WITSMLstudio.Store.Data.Logs
             {
                 authorizationProvider.UserAuthorizationAdapters = new List<IUserAuthorizationAdapter> { new AllowEndpointAuthorizationAdapter() };
                 WitsmlSettings.IsUserAuthorizationEnabled = true;
-                await RequestSessionAndAssert();
+                await RequestSessionAndAssert(10, Protocols.ChannelStreaming, Protocols.Discovery, Protocols.Store, Protocols.GrowingObject, Protocols.StoreNotification);
 
                 var ownerHandler = _client.Handler<Energistics.Etp.v11.Protocol.StoreNotification.IStoreNotificationCustomer>();
                 ownerHandler.NotificationRequest(new Energistics.Etp.v11.Datatypes.Object.NotificationRequestRecord
@@ -257,7 +257,7 @@ namespace PDS.WITSMLstudio.Store.Data.Logs
             {
                 authorizationProvider.UserAuthorizationAdapters = new List<IUserAuthorizationAdapter> { new AllowEndpointAuthorizationAdapter() };
                 WitsmlSettings.IsUserAuthorizationEnabled = true;
-                await RequestSessionAndAssert();
+                await RequestSessionAndAssert(10, Protocols.ChannelStreaming, Protocols.Discovery, Protocols.Store, Protocols.GrowingObject, Protocols.StoreNotification);
 
                 var ownerHandler = _client.Handler<Energistics.Etp.v12.Protocol.StoreNotification.IStoreNotificationCustomer>();
                 ownerHandler.SubscribeNotification(new Energistics.Etp.v12.Datatypes.Object.SubscriptionInfo
@@ -309,7 +309,7 @@ namespace PDS.WITSMLstudio.Store.Data.Logs
             {
                 authorizationProvider.UserAuthorizationAdapters = new List<IUserAuthorizationAdapter> { new AllowEndpointAuthorizationAdapter() };
                 WitsmlSettings.IsUserAuthorizationEnabled = true;
-                await RequestSessionAndAssert();
+                await RequestSessionAndAssert(10, Protocols.ChannelStreaming, Protocols.Discovery, Protocols.Store, Protocols.GrowingObject, Protocols.StoreNotification);
                 aclRuleStore.Save(denyRule);
 
                 var handler = _client.Handler<IGrowingObjectCustomer>();
@@ -344,7 +344,7 @@ namespace PDS.WITSMLstudio.Store.Data.Logs
             {
                 authorizationProvider.UserAuthorizationAdapters = new List<IUserAuthorizationAdapter> { new AllowEndpointAuthorizationAdapter() };
                 WitsmlSettings.IsUserAuthorizationEnabled = true;
-                await RequestSessionAndAssert();
+                await RequestSessionAndAssert(10, Protocols.ChannelStreaming, Protocols.Discovery, Protocols.Store, Protocols.GrowingObject, Protocols.StoreNotification);
                 aclRuleStore.Save(denyRule);
 
                 var handler = _client.Handler<GrowingObject12Customer>();
@@ -393,7 +393,7 @@ namespace PDS.WITSMLstudio.Store.Data.Logs
                 WitsmlSettings.IsUserAuthorizationEnabled = true;
                 aclRuleStore.Save(denyRule);
 
-                await RequestSessionAndAssert();
+                await RequestSessionAndAssert(10, Protocols.ChannelStreaming, Protocols.Discovery, Protocols.Store, Protocols.GrowingObject, Protocols.StoreNotification);
 
                 var handler = _client.Handler<IGrowingObjectCustomer>();
                 var onProtocolException = HandleAsync<IProtocolException>(
@@ -479,7 +479,7 @@ namespace PDS.WITSMLstudio.Store.Data.Logs
                 WitsmlSettings.IsUserAuthorizationEnabled = true;
                 aclRuleStore.Save(denyRule);
 
-                await RequestSessionAndAssert();
+                await RequestSessionAndAssert(10, Protocols.ChannelStreaming, Protocols.Discovery, Protocols.Store, Protocols.GrowingObject, Protocols.StoreNotification);
 
                 var handler = _client.Handler<GrowingObject12Customer>();
                 var onProtocolException = HandleAsync<IProtocolException>(
@@ -532,7 +532,7 @@ namespace PDS.WITSMLstudio.Store.Data.Logs
             // Allow for Log data to be saved during a Put
             CompatibilitySettings.LogAllowPutObjectWithData = allowPutData;
 
-            await RequestSessionAndAssert();
+            await RequestSessionAndAssert(10, Protocols.ChannelStreaming, Protocols.Discovery, Protocols.Store, Protocols.GrowingObject, Protocols.StoreNotification);
 
             var handler = _client.Handler<IStoreCustomer>();
             var uri = Log.GetUri();
