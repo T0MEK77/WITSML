@@ -382,5 +382,111 @@ namespace PDS.WITSMLstudio.Store.Security
             Assert.AreEqual(1, result.Count);
             Assert.AreEqual(AclAction.Update, result[0].Action);
         }
+
+        [TestMethod]
+        public void MongoDbAclRuleStore_New_Instance_Can_Read_Persisted_Rule()
+        {
+            var rule = new AclRule
+            {
+                Username = "acl-restart-user",
+                ResourceId = _resourceId,
+                ResourceType = AclResourceType.Well,
+                Action = AclAction.Read,
+                Effect = AclEffect.Allow,
+                Inherit = true
+            };
+
+            _store.Save(rule);
+
+            // Recreate the store object and verify that the rule is read from MongoDB,
+            // rather than from state held by the original store instance.
+            var newStore = new MongoDbAclRuleStore(_databaseProvider);
+            var result = newStore.GetRules(new[] { _resourceId });
+
+            Assert.AreEqual(1, result.Count);
+            Assert.AreEqual(rule.Username, result[0].Username);
+            Assert.AreEqual(rule.Effect, result[0].Effect);
+            Assert.IsTrue(result[0].Inherit);
+        }
+
+        [TestMethod]
+        public void MongoDbAclRuleStore_Concurrent_Save_And_Delete_Does_Not_Create_Duplicate_Rules()
+        {
+            var username = "acl-save-delete-user";
+            var rule = new AclRule
+            {
+                Username = username,
+                ResourceId = _resourceId,
+                ResourceType = AclResourceType.Well,
+                Action = AclAction.Read,
+                Effect = AclEffect.Allow,
+                Inherit = true
+            };
+
+            System.Threading.Tasks.Parallel.For(0, 64, index =>
+            {
+                if (index % 2 == 0)
+                    _store.Save(rule);
+                else
+                    _store.Delete(username, _resourceId, AclResourceType.Well, AclAction.Read);
+            });
+
+            var result = _store.GetRules(new[] { _resourceId });
+            Assert.IsTrue(result.Count <= 1);
+            Assert.IsTrue(result.All(x => x.Username == username));
+        }
+
+        [TestMethod]
+        [ExpectedException(typeof(MongoException))]
+        public void MongoDbAclRuleStore_Throws_When_MongoDb_Is_Unavailable()
+        {
+            var settings = new MongoClientSettings
+            {
+                Server = new MongoServerAddress("127.0.0.1", 1),
+                ConnectTimeout = TimeSpan.FromMilliseconds(500),
+                ServerSelectionTimeout = TimeSpan.FromSeconds(2)
+            };
+            var provider = new UnavailableDatabaseProvider(new MongoClient(settings));
+
+            // Store initialization verifies the unique index against MongoDB.
+            // An unavailable database must fail closed instead of pretending ACL
+            // persistence was initialized successfully.
+            new MongoDbAclRuleStore(provider);
+        }
+
+        private sealed class UnavailableDatabaseProvider : IDatabaseProvider
+        {
+            private readonly IMongoClient _client;
+
+            public UnavailableDatabaseProvider(IMongoClient client)
+            {
+                _client = client;
+            }
+
+            public IMongoClient Client
+            {
+                get { return _client; }
+            }
+
+            public string ConnectionString
+            {
+                get { return "mongodb://127.0.0.1:1"; }
+            }
+
+            public string DatabaseName
+            {
+                get { return "AclUnavailableTest"; }
+            }
+
+            public IMongoDatabase GetDatabase()
+            {
+                return _client.GetDatabase(DatabaseName);
+            }
+
+            public void SetConnectionString(string connectionString)
+            {
+                throw new NotSupportedException();
+            }
+        }
     }
 }
