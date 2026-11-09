@@ -84,7 +84,8 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
                 ResourceId = TestUris.LogMd.ObjectId,
                 ResourceType = AclResourceType.DataObject,
                 Action = AclAction.Read,
-                Effect = AclEffect.Deny
+                Effect = AclEffect.Deny,
+                Inherit = true
             };
 
             try
