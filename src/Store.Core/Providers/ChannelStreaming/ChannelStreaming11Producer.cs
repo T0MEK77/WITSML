@@ -635,7 +635,6 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
                 return false;
 
             var channelUri = new EtpUri(metadata.ChannelUri);
-            var providerUri = GetChannelProviderUri(channelUri);
 
             try
             {
@@ -676,7 +675,6 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
                 if (channelUri == null)
                     throw new WitsmlException(ErrorCodes.InsufficientOperationRights);
 
-                var providerUri = GetChannelProviderUri(channelUri);
                 ResolveChannelDataProvider(channelUri)
                     .CheckObjectAccess(username, AclAction.Read, channelUri);
             }
