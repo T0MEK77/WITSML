@@ -20,6 +20,7 @@ using System.Collections;
 using System.Collections.Generic;
 using Energistics.Etp.Common.Datatypes;
 using Energistics.Etp.Common.Datatypes.Object;
+using PDS.WITSMLstudio.Store.Data.Security;
 
 namespace PDS.WITSMLstudio.Store.Data
 {
