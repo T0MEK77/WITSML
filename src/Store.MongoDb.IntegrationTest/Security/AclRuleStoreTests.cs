@@ -153,6 +153,95 @@ namespace PDS.WITSMLstudio.Store.Security
         }
 
         [TestMethod]
+        public void AclRuleIndexManager_Different_Inherit_Values_Are_Reported_As_Duplicate_Identity()
+        {
+            var collection = _databaseProvider.GetDatabase()
+                .GetCollection<AclRule>(_indexTestCollectionName);
+            var rule = new AclRule
+            {
+                Username = "acl-inherit-user",
+                ResourceId = "acl-inherit-resource",
+                ResourceType = AclResourceType.Well,
+                Action = AclAction.Read,
+                Effect = AclEffect.Allow,
+                Inherit = false
+            };
+
+            collection.InsertMany(new[]
+            {
+                rule,
+                new AclRule
+                {
+                    Username = rule.Username,
+                    ResourceId = rule.ResourceId,
+                    ResourceType = rule.ResourceType,
+                    Action = rule.Action,
+                    Effect = rule.Effect,
+                    Inherit = true
+                }
+            });
+
+            var duplicates = AclRuleIndexManager.FindDuplicateKeys(collection);
+
+            Assert.AreEqual(1, duplicates.Count);
+            Assert.AreEqual(2, duplicates[0]["Count"].AsInt32);
+            Assert.AreEqual(2, collection.CountDocuments(FilterDefinition<AclRule>.Empty));
+        }
+
+        [TestMethod]
+        public void AclRuleIndexManager_Different_Actions_Create_Different_Unique_Identities()
+        {
+            var collection = _databaseProvider.GetDatabase()
+                .GetCollection<AclRule>(_indexTestCollectionName);
+            var rule = new AclRule
+            {
+                Username = "acl-actions-user",
+                ResourceId = "acl-actions-resource",
+                ResourceType = AclResourceType.Well,
+                Action = AclAction.Read,
+                Effect = AclEffect.Allow
+            };
+
+            collection.InsertMany(new[]
+            {
+                rule,
+                new AclRule
+                {
+                    Username = rule.Username,
+                    ResourceId = rule.ResourceId,
+                    ResourceType = rule.ResourceType,
+                    Action = AclAction.Update,
+                    Effect = AclEffect.Deny
+                }
+            });
+
+            Assert.AreEqual(0, AclRuleIndexManager.FindDuplicateKeys(collection).Count);
+
+            AclRuleIndexManager.EnsureUniqueIndex(collection);
+
+            Assert.AreEqual(2, collection.CountDocuments(FilterDefinition<AclRule>.Empty));
+            Assert.AreEqual(2, collection.Indexes.List().ToList().Count);
+        }
+
+        [TestMethod]
+        public void AclRuleIndexManager_Concurrent_Unique_Index_Creation_Is_Idempotent()
+        {
+            var collection = _databaseProvider.GetDatabase()
+                .GetCollection<AclRule>(_indexTestCollectionName);
+
+            System.Threading.Tasks.Parallel.For(0, 8, index =>
+            {
+                AclRuleIndexManager.EnsureUniqueIndex(collection);
+            });
+
+            var indexes = collection.Indexes.List().ToList();
+            var aclIndex = indexes.Single(x => x["name"].AsString == AclRuleIndexManager.IndexName);
+
+            Assert.IsTrue(aclIndex["unique"].AsBoolean);
+            Assert.AreEqual(2, indexes.Count);
+        }
+
+        [TestMethod]
         public void AclRuleIndexManager_Existing_Unique_Data_Is_Preserved_When_Index_Is_Created()
         {
             var collection = _databaseProvider.GetDatabase()
