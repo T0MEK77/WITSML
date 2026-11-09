@@ -29,6 +29,7 @@ using Energistics.Etp.v12.Protocol.ChannelStreaming;
 using PDS.WITSMLstudio.Framework;
 using PDS.WITSMLstudio.Data.Channels;
 using PDS.WITSMLstudio.Store.Data.Channels;
+using PDS.WITSMLstudio.Store.Data.Security;
 
 namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
 {
@@ -176,6 +177,21 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
             {
                 var channel = channelMetadata.Channels[i];
                 var uri = new EtpUri(channel.ChannelUri);
+
+                // Incoming channel data changes persisted channel values. Require
+                // Update on the channel and its Wellbore/Well ancestors before
+                // accepting metadata for the stream.
+                try
+                {
+                    var authorization = _container.Resolve<IUserAuthorizationProvider>();
+                    authorization.CheckObjectAccess(AclAction.Update, AclResourceHierarchy.FromUri(uri));
+                }
+                catch (WitsmlException)
+                {
+                    this.InvalidState($"Channel {channel.ChannelName}({channel.ChannelId}) is not authorized for data updates.", messageId);
+                    channelIndex.Add(i);
+                    continue;
+                }
 
                 // Ensure that all parent UIDs are populated
                 foreach (var segment in uri.GetObjectIds())
