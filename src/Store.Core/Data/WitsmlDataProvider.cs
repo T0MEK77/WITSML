@@ -330,6 +330,27 @@ namespace PDS.WITSMLstudio.Store.Data
             authorization.CheckObjectAccess(username, action, hierarchy);
         }
 
+        /// <summary>
+        /// Checks both the persisted location and requested location of an object.
+        /// This prevents WITSML 2.0 updates from moving data across ACL boundaries
+        /// when the object URI itself does not encode its Wellbore ancestry.
+        /// </summary>
+        private void CheckUpdateAccess(EtpUri uri, object updatedObject)
+        {
+            var username = WitsmlOperationContext.Current.User;
+
+            if (uri != null
+                && string.Equals(uri.Family, "witsml", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(uri.Version, "2.0", StringComparison.OrdinalIgnoreCase))
+            {
+                var existingObject = DataAdapter.Get(uri);
+                if (existingObject != null)
+                    CheckObjectAccess(username, AclAction.Update, uri, existingObject);
+            }
+
+            CheckObjectAccess(username, AclAction.Update, uri, updatedObject);
+        }
+
         private object GetObjectForAcl(EtpUri uri, AclAction action, object suppliedObject = null)
         {
             var context = WitsmlOperationContext.Current;
@@ -459,7 +480,7 @@ namespace PDS.WITSMLstudio.Store.Data
                 UpdateDefaultValues(dataObject, parser);
                 var uri = GetUri(dataObject);
                 WitsmlOperationContext.Current.DataObject = (IDataObject)dataObject;
-                CheckObjectAccess(AclAction.Update, uri);
+                CheckUpdateAccess(uri, dataObject);
                 transaction.SetContext(uri);
                 Logger.DebugFormat("Updating {0} with URI '{1}'", typeof(TObject).Name, uri);
 
@@ -498,7 +519,7 @@ namespace PDS.WITSMLstudio.Store.Data
                 // object. Resolve ACL ancestry from the parsed replacement, not
                 // from the stale object retained in the operation context.
                 WitsmlOperationContext.Current.DataObject = (IDataObject)dataObject;
-                CheckObjectAccess(AclAction.Update, uri);
+                CheckUpdateAccess(uri, dataObject);
 
                 transaction.SetContext(uri);
                 Logger.DebugFormat("Replacing {0} with URI '{1}'", typeof(TObject).Name, uri);
