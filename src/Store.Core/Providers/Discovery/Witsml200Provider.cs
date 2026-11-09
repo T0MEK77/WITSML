@@ -29,6 +29,7 @@ using Etp12 = Energistics.Etp.v12;
 using PDS.WITSMLstudio.Framework;
 using PDS.WITSMLstudio.Store.Configuration;
 using PDS.WITSMLstudio.Store.Data;
+using PDS.WITSMLstudio.Store.Data.Security;
 
 namespace PDS.WITSMLstudio.Store.Providers.Discovery
 {
@@ -150,13 +151,13 @@ namespace PDS.WITSMLstudio.Store.Providers.Discovery
                 if (!isChannelDataAdapterEnabled && ObjectTypes.ChannelSet.EqualsIgnoreCase(etpUri.ObjectType) && ObjectTypes.Log.EqualsIgnoreCase(parentUri.ObjectType))
                 {
                     var log = _logDataProvider.Get(parentUri);
-                    log?.ChannelSet?.OrderBy(x => x.Citation.Title).ForEach(x => resources.Add(ToResource(etpAdapter, x, parentUri)));
+                    log?.ChannelSet?.Where(x => IsObjectReadable(x.GetUri(parentUri))).OrderBy(x => x.Citation.Title).ForEach(x => resources.Add(ToResource(etpAdapter, x, parentUri)));
                     serverSortOrder = _channelSetDataProvider.ServerSortOrder;
                 }
                 else if (!isChannelDataAdapterEnabled && ObjectTypes.Channel.EqualsIgnoreCase(etpUri.ObjectType) && ObjectTypes.ChannelSet.EqualsIgnoreCase(parentUri.ObjectType))
                 {
                     var set = _channelSetDataProvider.Get(parentUri);
-                    set?.Channel?.OrderBy(x => x.Citation.Title).ForEach(x => resources.Add(ToResource(etpAdapter, x, parentUri)));
+                    set?.Channel?.Where(x => IsObjectReadable(x.GetUri(parentUri))).OrderBy(x => x.Citation.Title).ForEach(x => resources.Add(ToResource(etpAdapter, x, parentUri)));
                     serverSortOrder = _channelSetDataProvider.ServerSortOrder;
                 }
                 else
@@ -176,7 +177,7 @@ namespace PDS.WITSMLstudio.Store.Providers.Discovery
             else if (ObjectTypes.Log.EqualsIgnoreCase(etpUri.ObjectType))
             {
                 var log = _logDataProvider.Get(etpUri);
-                var hasChildren = log?.ChannelSet?.Count ?? 0;
+                var hasChildren = log?.ChannelSet?.Count(x => IsObjectReadable(x.GetUri(etpUri))) ?? 0;
 
                 CreateFoldersByObjectType(etpAdapter, etpUri, "Log", ObjectTypes.ChannelSet, hasChildren)
                     .ForEach(resources.Add);
@@ -184,7 +185,7 @@ namespace PDS.WITSMLstudio.Store.Providers.Discovery
             else if (ObjectTypes.ChannelSet.EqualsIgnoreCase(etpUri.ObjectType))
             {
                 var set = _channelSetDataProvider.Get(etpUri);
-                var hasChildren = set?.Channel?.Count ?? 0;
+                var hasChildren = set?.Channel?.Count(x => IsObjectReadable(x.GetUri(etpUri))) ?? 0;
 
                 CreateFoldersByObjectType(etpAdapter, etpUri, "ChannelSet", ObjectTypes.Channel, hasChildren)
                     .ForEach(resources.Add);
@@ -266,6 +267,21 @@ namespace PDS.WITSMLstudio.Store.Providers.Discovery
                     return etpAdapter.NewFolder(uri, x.ContentType, folderName, hasChildren);
                 })
                 .ToList();
+        }
+
+        private bool IsObjectReadable(EtpUri uri)
+        {
+            try
+            {
+                _container.Resolve<IUserAuthorizationProvider>().CheckObjectAccess(
+                    AclAction.Read,
+                    AclResourceHierarchy.FromUri(uri));
+                return true;
+            }
+            catch (WitsmlException)
+            {
+                return false;
+            }
         }
 
         private IEtpDataProvider GetDataProvider(string objectType)
