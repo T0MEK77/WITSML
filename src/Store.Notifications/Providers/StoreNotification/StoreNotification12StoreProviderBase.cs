@@ -93,7 +93,7 @@ namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
         protected override void HandleUnsubscribeNotification(IMessageHeader header, UnsubscribeNotification request)
         {
             var message = _requests.FirstOrDefault(x => x.Request.RequestUuid.Equals(request.RequestUuid));
-            EnsureSubscriptionOwner(message == null ? null : message.Request.RequestUuid, message == null ? null : _subscribers[message.Request.RequestUuid]);
+            if (message != null) EnsureSubscriptionOwner(_subscribers[message.Request.RequestUuid]);
 
             base.HandleUnsubscribeNotification(header, request);
 
@@ -117,9 +117,9 @@ namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
             provider.CheckObjectAccess(WitsmlOperationContext.Current.User, AclAction.Read, etpUri);
         }
 
-        private void EnsureSubscriptionOwner(Uuid? requestId, string owner)
+        private void EnsureSubscriptionOwner(string owner)
         {
-            if (requestId.HasValue && !string.Equals(owner, WitsmlOperationContext.Current.User, StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(owner, WitsmlOperationContext.Current.User, StringComparison.OrdinalIgnoreCase))
                 throw new WitsmlException(ErrorCodes.InsufficientOperationRights);
         }
 
