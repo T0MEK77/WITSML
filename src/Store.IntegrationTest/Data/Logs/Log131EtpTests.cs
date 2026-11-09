@@ -18,6 +18,7 @@
 
 using System.Threading.Tasks;
 using System.Collections.Generic;
+using Energistics.Etp;
 using Energistics.Etp.Common;
 using Energistics.Etp.v11.Protocol.GrowingObject;
 using PDS.WITSMLstudio.Store.Configuration;
