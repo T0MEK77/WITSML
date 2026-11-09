@@ -87,6 +87,11 @@ namespace PDS.WITSMLstudio.Store.Data.Security
             if (!WitsmlSettings.IsUserAuthorizationEnabled)
                 return;
 
+            // Only server-configured usernames bypass object ACL. Do not trust
+            // roles or administrator flags supplied by the ETP/SOAP client.
+            if (IsAclAdministrator(username))
+                return;
+
             if (AclRuleStore == null)
                 throw new WitsmlException(ErrorCodes.InsufficientOperationRights);
 
@@ -102,6 +107,16 @@ namespace PDS.WITSMLstudio.Store.Data.Security
 
             if (decision.IsAclConfigured && !decision.IsAllowed)
                 throw new WitsmlException(ErrorCodes.InsufficientOperationRights);
+        }
+
+        private static bool IsAclAdministrator(string username)
+        {
+            if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(WitsmlSettings.AclAdministratorUsers))
+                return false;
+
+            return WitsmlSettings.AclAdministratorUsers
+                .Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries)
+                .Any(x => string.Equals(x.Trim(), username, StringComparison.OrdinalIgnoreCase));
         }
 
         /// <summary>
