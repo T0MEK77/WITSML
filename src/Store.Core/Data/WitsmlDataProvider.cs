@@ -260,23 +260,31 @@ namespace PDS.WITSMLstudio.Store.Data
 
         public void CheckObjectAccess(AclAction action, EtpUri uri)
         {
+            CheckObjectAccess(WitsmlOperationContext.Current.User, action, uri);
+        }
+
+        /// <summary>
+        /// Checks object ACL for a specified user. This overload is required by
+        /// asynchronous ETP notification delivery after the original request ends.
+        /// </summary>
+        public void CheckObjectAccess(string username, AclAction action, EtpUri uri)
+        {
             var authorization = Container.Resolve<IUserAuthorizationProvider>();
             var hierarchy = AclResourceHierarchy.FromUri(uri);
 
-            // WITSML 2.0 object URIs are flat. Their Wellbore/Well ancestry is
-            // carried by DataObjectReference properties in the stored objects.
-            // Resolve those references on the server so inherited ACL rules
-            // cannot be bypassed by addressing the flat object URI directly.
+            // WITSML 2.0 object URIs are flat. Resolve parent references using the
+            // stored/request object so notifications and protocol operations apply
+            // exactly the same Wellbore/Well inheritance rules.
             if (uri != null && string.Equals(uri.Family, "witsml", StringComparison.OrdinalIgnoreCase)
                 && string.Equals(uri.Version, "2.0", StringComparison.OrdinalIgnoreCase)
-                && uri.ObjectType != "Well" && uri.ObjectType != "Wellbore"
+                && !string.Equals(uri.ObjectType, "Well", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(uri.ObjectType, "Wellbore", StringComparison.OrdinalIgnoreCase)
                 && !string.IsNullOrWhiteSpace(uri.ObjectId))
             {
                 var storedObject = GetObjectForAcl(uri, action);
                 AddReferencedResource(hierarchy, storedObject, "Wellbore", AclResourceType.Wellbore);
 
-                var wellbore = GetReference(storedObject, "Wellbore");
-                var wellboreId = GetReferenceId(wellbore);
+                var wellboreId = GetReferenceId(GetReference(storedObject, "Wellbore"));
                 if (!string.IsNullOrWhiteSpace(wellboreId))
                 {
                     var wellboreUri = uri.Parent.Append(uri.Family, uri.Version, "Wellbore", wellboreId);
@@ -286,11 +294,11 @@ namespace PDS.WITSMLstudio.Store.Data
                 }
                 else
                 {
-                    // Some WITSML 2.0 object types reference a Well directly.
                     AddReferencedResource(hierarchy, storedObject, "Well", AclResourceType.Well);
                 }
             }
-            else if (uri != null && string.Equals(uri.ObjectType, "Wellbore", StringComparison.OrdinalIgnoreCase)
+            else if (uri != null
+                && string.Equals(uri.ObjectType, "Wellbore", StringComparison.OrdinalIgnoreCase)
                 && string.Equals(uri.Family, "witsml", StringComparison.OrdinalIgnoreCase)
                 && string.Equals(uri.Version, "2.0", StringComparison.OrdinalIgnoreCase))
             {
@@ -298,7 +306,7 @@ namespace PDS.WITSMLstudio.Store.Data
                 AddReferencedResource(hierarchy, storedWellbore, "Well", AclResourceType.Well);
             }
 
-            authorization.CheckObjectAccess(action, hierarchy);
+            authorization.CheckObjectAccess(username, action, hierarchy);
         }
 
         private object GetObjectForAcl(EtpUri uri, AclAction action)
