@@ -186,6 +186,7 @@
     <Compile Include="Data\Transactions\MongoTransactionTests.cs" />
     <Compile Include="TestAssemblyInitializer.cs" />
     <Compile Include="Data\Channels\ChannelDataChunkAdapterAddTests.cs" />
+    <Compile Include="Security\AclRuleStoreTests.cs" />
     <Compile Include="Data\DatabaseProviderTests.cs" />
     <Compile Include="Data\Logs\Log141MongoDataAdapterAddTests.cs" />
     <Compile Include="Data\MongoDbClassMapperTests.cs" />
