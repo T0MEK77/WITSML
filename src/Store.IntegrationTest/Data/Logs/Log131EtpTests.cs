@@ -121,7 +121,7 @@ namespace PDS.WITSMLstudio.Store.Data.Logs
                 {
                     IncludeObjectData = true,
                     ObjectTypes = new List<string>(),
-                    StartTime = System.DateTime.UtcNow,
+                    StartTime = (long)((System.DateTime.UtcNow - new System.DateTime(1970, 1, 1, 0, 0, 0, System.DateTimeKind.Utc)).TotalMilliseconds * 1000L),
                     Uri = Log.GetUri().ToString(),
                     Uuid = System.Guid.NewGuid().ToString()
                 });
@@ -168,24 +168,16 @@ namespace PDS.WITSMLstudio.Store.Data.Logs
 
                 var handler = _client.Handler<Energistics.Etp.v12.Protocol.StoreNotification.IStoreNotificationCustomer>();
                 var onProtocolException = HandleAsync<IProtocolException>(x => handler.OnProtocolException += x);
-                handler.SubscribeNotifications(new List<Energistics.Etp.v12.Datatypes.Object.SubscriptionInfo>
+                handler.SubscribeNotification(new Energistics.Etp.v12.Datatypes.Object.SubscriptionInfo
                 {
-                    new Energistics.Etp.v12.Datatypes.Object.SubscriptionInfo
+                    Context = new Energistics.Etp.v12.Datatypes.Object.ContextInfo
                     {
-                        Format = Energistics.Etp.v12.Datatypes.Formats.Xml,
-                        Context = new Energistics.Etp.v12.Datatypes.Object.ContextInfo
-                        {
-                            Uri = Log.GetUri().ToString(),
-                            DataObjectTypes = new List<string>(),
-                            Depth = 999,
-                            IncludeSecondarySources = false,
-                            IncludeSecondaryTargets = false,
-                            NavigableEdges = Energistics.Etp.v12.Datatypes.Object.RelationshipKind.Primary
-                        },
-                        Scope = Energistics.Etp.v12.Datatypes.Object.ContextScopeKind.sourcesOrSelf,
-                        IncludeObjectData = true,
-                        RequestUuid = System.Guid.NewGuid()
-                    }
+                        Uri = Log.GetUri().ToString(),
+                        Depth = 0
+                    },
+                    Scope = Energistics.Etp.v12.Datatypes.Object.ContextScopeKind.self,
+                    IncludeObjectData = true,
+                    RequestUuid = System.Guid.NewGuid().ToUuid()
                 });
 
                 var exception = await onProtocolException;
