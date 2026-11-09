@@ -212,9 +212,16 @@ namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
             var type = ObjectTypes.GetObjectGroupType(uri.ObjectType, uri.Family, uri.Version) ??
                        ObjectTypes.GetObjectType(uri.ObjectType, uri.Family, uri.Version);
 
-            return jObject != null
+            var parsed = jObject != null
                 ? jObject.ToObject(type)
                 : WitsmlParser.Parse(type, WitsmlParser.Parse(dataObject.ToString()).Root);
+
+            // WITSML 1.x payloads may be collection wrappers; ACL references
+            // belong to the contained data object rather than the wrapper.
+            var collection = parsed as IEnergisticsCollection;
+            return collection == null
+                ? parsed
+                : collection.Items.OfType<IDataObject>().FirstOrDefault();
         }
 
         protected virtual DataObject GetDataObject(string objectType, string family, string version, object dataObject, bool includeObjectData)
