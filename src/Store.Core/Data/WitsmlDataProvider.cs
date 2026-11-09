@@ -269,6 +269,15 @@ namespace PDS.WITSMLstudio.Store.Data
         /// </summary>
         public void CheckObjectAccess(string username, AclAction action, EtpUri uri)
         {
+            CheckObjectAccess(username, action, uri, null);
+        }
+
+        /// <summary>
+        /// Checks object ACL using an optional event/request payload to resolve
+        /// WITSML 2.0 parent references even after an object has been deleted.
+        /// </summary>
+        public void CheckObjectAccess(string username, AclAction action, EtpUri uri, object dataObject)
+        {
             var authorization = Container.Resolve<IUserAuthorizationProvider>();
             var hierarchy = AclResourceHierarchy.FromUri(uri);
 
@@ -281,7 +290,7 @@ namespace PDS.WITSMLstudio.Store.Data
                 && !string.Equals(uri.ObjectType, "Wellbore", StringComparison.OrdinalIgnoreCase)
                 && !string.IsNullOrWhiteSpace(uri.ObjectId))
             {
-                var storedObject = GetObjectForAcl(uri, action);
+                var storedObject = GetObjectForAcl(uri, action, dataObject);
                 AddReferencedResource(hierarchy, storedObject, "Wellbore", AclResourceType.Wellbore);
 
                 var wellboreId = GetReferenceId(GetReference(storedObject, "Wellbore"));
@@ -302,17 +311,17 @@ namespace PDS.WITSMLstudio.Store.Data
                 && string.Equals(uri.Family, "witsml", StringComparison.OrdinalIgnoreCase)
                 && string.Equals(uri.Version, "2.0", StringComparison.OrdinalIgnoreCase))
             {
-                var storedWellbore = GetObjectForAcl(uri, action);
+                var storedWellbore = GetObjectForAcl(uri, action, dataObject);
                 AddReferencedResource(hierarchy, storedWellbore, "Well", AclResourceType.Well);
             }
 
             authorization.CheckObjectAccess(username, action, hierarchy);
         }
 
-        private object GetObjectForAcl(EtpUri uri, AclAction action)
+        private object GetObjectForAcl(EtpUri uri, AclAction action, object suppliedObject = null)
         {
             var context = WitsmlOperationContext.Current;
-            var requestObject = context == null ? null : context.DataObject;
+            var requestObject = suppliedObject ?? (context == null ? null : context.DataObject);
 
             if (requestObject != null)
             {
