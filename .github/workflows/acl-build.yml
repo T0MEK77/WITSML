@@ -145,6 +145,25 @@ jobs:
           & $runner $testAssembly /TestCaseFilter:"FullyQualifiedName~AclPolicyTests|FullyQualifiedName~WitsmlStore141_Soap_CRUD_Enforces_Object_ACL|FullyQualifiedName~WitsmlStore141_Soap_Enforces_Parent_ACL_Hierarchy"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Run ETP GrowingObject and Store Notification ACL integration tests
+        shell: pwsh
+        run: |
+          $testAssembly = "src/Store.IntegrationTest/bin/Release/PDS.WITSMLstudio.Store.IntegrationTest.dll"
+          if (!(Test-Path $testAssembly)) {
+            throw "Store integration test assembly not found: $testAssembly"
+          }
+          $vswhere = Get-ChildItem "${env:ProgramFiles(x86)}\\Microsoft Visual Studio\\Installer" -Filter vswhere.exe -Recurse | Select-Object -First 1
+          if ($null -eq $vswhere) {
+            throw "vswhere.exe was not found."
+          }
+          $installPath = & $vswhere.FullName -latest -products '*' -property installationPath
+          $runner = Join-Path $installPath "Common7\\IDE\\CommonExtensions\\Microsoft\\TestWindow\\vstest.console.exe"
+          if (!(Test-Path $runner)) {
+            throw "VSTest runner not found: $runner"
+          }
+          & $runner $testAssembly /TestCaseFilter:"FullyQualifiedName~Log131_GrowingObjectGet_Denies_Explicit_Read_Deny|FullyQualifiedName~Log131_GrowingObjectGetRange_Denies_Explicit_Read_Deny|FullyQualifiedName~Log131_GrowingObjectPut_Denies_Explicit_Update_Deny|FullyQualifiedName~Log131_GrowingObjectDelete_Denies_Explicit_Delete_Deny|FullyQualifiedName~Log131_GrowingObjectDeleteRange_Denies_Explicit_Delete_Deny|FullyQualifiedName~Log131_GrowingObjectGet_Rechecks_Read_Acl_After_Session_Start|FullyQualifiedName~Log131_Etp12GetPart_Rechecks_Read_Acl_After_Session_Start|FullyQualifiedName~Log131_Etp11StoreNotification_Denies_Subscription_With_Explicit_Read_Deny|FullyQualifiedName~Log131_Etp12StoreNotification_Denies_Subscription_With_Explicit_Read_Deny|FullyQualifiedName~Log131_Etp11StoreNotification_Prevents_Other_User_From_Canceling_Subscription|FullyQualifiedName~Log131_Etp12StoreNotification_Prevents_Other_User_From_Unsubscribing|FullyQualifiedName~Log131_Etp12GetPart_Denies_Explicit_Read_Deny|FullyQualifiedName~Log131_Etp12GetPartsByRange_Denies_Explicit_Read_Deny|FullyQualifiedName~Log131_Etp12PutPart_Denies_Explicit_Update_Deny|FullyQualifiedName~Log131_Etp12DeletePart_Denies_Explicit_Delete_Deny|FullyQualifiedName~Log131_Etp12DeletePartsByRange_Denies_Explicit_Delete_Deny"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Run ETP channel streaming ACL integration tests
         shell: pwsh
         run: |
