@@ -74,10 +74,23 @@ namespace PDS.WITSMLstudio.Store.Data.Security
         /// </summary>
         public void CheckObjectAccess(AclAction action, IEnumerable<AclResource> resourceHierarchy)
         {
+            CheckObjectAccess(WitsmlOperationContext.Current.User, action, resourceHierarchy);
+        }
+
+        /// <summary>
+        /// Checks object access for an explicitly supplied authenticated user.
+        /// This overload is used by asynchronous notification delivery, where the
+        /// original request context is no longer available.
+        /// </summary>
+        public void CheckObjectAccess(string username, AclAction action, IEnumerable<AclResource> resourceHierarchy)
+        {
             if (!WitsmlSettings.IsUserAuthorizationEnabled)
                 return;
 
             if (AclRuleStore == null)
+                throw new WitsmlException(ErrorCodes.InsufficientOperationRights);
+
+            if (string.IsNullOrWhiteSpace(username))
                 throw new WitsmlException(ErrorCodes.InsufficientOperationRights);
 
             if (resourceHierarchy == null)
@@ -85,7 +98,7 @@ namespace PDS.WITSMLstudio.Store.Data.Security
 
             var resources = resourceHierarchy.ToList();
             var rules = AclRuleStore.GetRules(resources.Select(x => x.Id));
-            var decision = AclPolicyEvaluator.Evaluate(WitsmlOperationContext.Current.User, action, resources, rules);
+            var decision = AclPolicyEvaluator.Evaluate(username, action, resources, rules);
 
             if (decision.IsAclConfigured && !decision.IsAllowed)
                 throw new WitsmlException(ErrorCodes.InsufficientOperationRights);
