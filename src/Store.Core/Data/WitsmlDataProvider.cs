@@ -296,9 +296,9 @@ namespace PDS.WITSMLstudio.Store.Data
                 var wellboreId = GetReferenceId(GetReference(storedObject, "Wellbore"));
                 if (!string.IsNullOrWhiteSpace(wellboreId))
                 {
-                    var wellboreUri = uri.Parent.Append(uri.Family, uri.Version, "Wellbore", wellboreId);
                     var wellboreAdapter = Container.Resolve<IWitsmlDataAdapter<Wellbore>>();
-                    var storedWellbore = wellboreAdapter.Get(wellboreUri);
+                    var storedWellbore = wellboreAdapter.GetAll()
+                        .FirstOrDefault(x => string.Equals(GetReferenceId(x), wellboreId, StringComparison.OrdinalIgnoreCase));
                     AddReferencedResource(hierarchy, storedWellbore, "Well", AclResourceType.Well);
                 }
                 else
@@ -407,7 +407,7 @@ namespace PDS.WITSMLstudio.Store.Data
 
                 SetDefaultValues(dataObject);
                 var uri = GetUri(dataObject);
-                WitsmlOperationContext.Current.DataObject = dataObject;
+                WitsmlOperationContext.Current.DataObject = (IDataObject)dataObject;
                 CheckObjectAccess(AclAction.Create, uri);
                 transaction.SetContext(uri);
                 Logger.DebugFormat("Adding {0} with URI '{1}'", typeof(TObject).Name, uri);
