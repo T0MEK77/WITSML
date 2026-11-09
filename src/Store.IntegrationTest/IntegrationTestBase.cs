@@ -52,6 +52,7 @@ namespace PDS.WITSMLstudio.Store
         private IContainer _container;
         protected IEtpSelfHostedWebServer _server;
         protected IEtpClient _client;
+        protected string _etpServerUrl;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="IntegrationTestBase"/> class.
@@ -94,6 +95,7 @@ namespace PDS.WITSMLstudio.Store
             // Update EtpServerUrl setting
             var uri = new Uri(TestSettings.EtpServerUrl);
             var url = TestSettings.EtpServerUrl.Replace($":{uri.Port}", $":{port}");
+            _etpServerUrl = url;
 
             // Create server and client instances
             _server = CreateServer(port);
@@ -127,6 +129,7 @@ namespace PDS.WITSMLstudio.Store
             _server?.Dispose();
             _client = null;
             _server = null;
+            _etpServerUrl = null;
 
             TestSettings.Reset();
         }
