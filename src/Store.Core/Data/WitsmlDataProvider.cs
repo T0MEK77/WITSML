@@ -188,7 +188,7 @@ namespace PDS.WITSMLstudio.Store.Data
             var uri = parser.GetUri<TObject>();
             Logger.Debug($"Putting {typeof(TObject).Name} with URI '{uri}'");
 
-            if (!string.IsNullOrWhiteSpace(uri.ObjectId) && Exists(uri))
+            if (!string.IsNullOrWhiteSpace(uri.ObjectId) && DataAdapter.Exists(uri))
             {
                 CheckObjectAccess(AclAction.Update, uri);
                 Replace(parser);
@@ -232,7 +232,7 @@ namespace PDS.WITSMLstudio.Store.Data
         /// <param name="uri">The data object URI.</param>
         public virtual void Ensure(EtpUri uri)
         {
-            if (Exists(uri)) return;
+            if (DataAdapter.Exists(uri)) return;
             var parent = uri.Parent;
 
             using (var transaction = DataAdapter.GetTransaction())
