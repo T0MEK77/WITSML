@@ -68,7 +68,7 @@ db.AclRules.replaceOne(
 - An applicable `Deny` overrides every applicable `Allow`.
 - Once an object hierarchy is ACL-scoped, an authenticated user needs an applicable `Allow` for the requested action; otherwise access is denied.
 - A hierarchy with no applicable ACL rule retains the legacy authorization behavior.
-- SOAP query results, ETP object reads/listings/counts, cascade deletes, channel streaming/data loads and Store Notification delivery are checked server-side.
+- SOAP query results, ETP object reads/listings/counts, cascade deletes, channel streaming and Store Notification delivery are checked server-side.
 
 ## Important scope note
 
