@@ -31,6 +31,7 @@ using Etp12 = Energistics.Etp.v12;
 using PDS.WITSMLstudio.Framework;
 using PDS.WITSMLstudio.Store.Configuration;
 using PDS.WITSMLstudio.Store.Data;
+using PDS.WITSMLstudio.Store.Data.Security;
 
 namespace PDS.WITSMLstudio.Store.Providers.Discovery
 {
@@ -176,7 +177,7 @@ namespace PDS.WITSMLstudio.Store.Providers.Discovery
                 foreach (var adapter in GetWellboreDataAdapters())
                 {
                     var type = EtpContentTypes.GetContentType(adapter.DataObjectType);
-                    var count = adapter.Count(etpUri);
+                    var count = GetAuthorizedCount(adapter, etpUri);
                     resources.Add(etpAdapter.NewFolder(etpUri, type, type.ObjectType, count));
                 }
             }
@@ -186,6 +187,28 @@ namespace PDS.WITSMLstudio.Store.Providers.Discovery
                 log?.LogCurveInfo?.ForEach(x => resources.Add(ToResource(etpAdapter, log, x)));
                 serverSortOrder = string.Empty;
             }
+        }
+
+        private int GetAuthorizedCount(IWitsmlDataAdapter adapter, EtpUri parentUri)
+        {
+            var authorization = _container.Resolve<IUserAuthorizationProvider>();
+
+            return adapter.GetAll(parentUri)
+                .Cast<object>()
+                .Count(item =>
+                {
+                    try
+                    {
+                        authorization.CheckObjectAccess(
+                            AclAction.Read,
+                            AclResourceHierarchy.FromUri(adapter.GetUri(item)));
+                        return true;
+                    }
+                    catch (WitsmlException)
+                    {
+                        return false;
+                    }
+                });
         }
 
         private IEnumerable<IWitsmlDataAdapter> GetDataAdapters<TObject>()
