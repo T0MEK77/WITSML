@@ -40,6 +40,40 @@ namespace PDS.WITSMLstudio.Store.Data.Logs
         [TestMethod]
         public async Task Log131_GrowingObjectGet_Denies_Explicit_Read_Deny()
         {
+            await AssertGrowingObjectDeniedAsync(AclAction.Read,
+                handler => handler.GrowingObjectGet(Log.GetUri().ToString(), "missing-part"));
+        }
+
+        [TestMethod]
+        public async Task Log131_GrowingObjectGetRange_Denies_Explicit_Read_Deny()
+        {
+            await AssertGrowingObjectDeniedAsync(AclAction.Read,
+                handler => handler.GrowingObjectGetRange(Log.GetUri().ToString(), 0, 10, null, null));
+        }
+
+        [TestMethod]
+        public async Task Log131_GrowingObjectPut_Denies_Explicit_Update_Deny()
+        {
+            await AssertGrowingObjectDeniedAsync(AclAction.Update,
+                handler => handler.GrowingObjectPut(Log.GetUri().ToString(), "text/xml", new byte[0]));
+        }
+
+        [TestMethod]
+        public async Task Log131_GrowingObjectDelete_Denies_Explicit_Delete_Deny()
+        {
+            await AssertGrowingObjectDeniedAsync(AclAction.Delete,
+                handler => handler.GrowingObjectDelete(Log.GetUri().ToString(), "missing-part"));
+        }
+
+        [TestMethod]
+        public async Task Log131_GrowingObjectDeleteRange_Denies_Explicit_Delete_Deny()
+        {
+            await AssertGrowingObjectDeniedAsync(AclAction.Delete,
+                handler => handler.GrowingObjectDeleteRange(Log.GetUri().ToString(), 0, 10, null, null));
+        }
+
+        private async Task AssertGrowingObjectDeniedAsync(AclAction action, System.Action<IGrowingObjectCustomer> sendRequest)
+        {
             AddParents();
             DevKit.AddAndAssert<LogList, Log>(Log);
 
@@ -56,7 +90,7 @@ namespace PDS.WITSMLstudio.Store.Data.Logs
                 Username = username,
                 ResourceId = Log.Uid,
                 ResourceType = AclResourceType.DataObject,
-                Action = AclAction.Read,
+                Action = action,
                 Effect = AclEffect.Deny
             };
 
@@ -75,7 +109,7 @@ namespace PDS.WITSMLstudio.Store.Data.Logs
                 var onProtocolException = HandleAsync<IProtocolException>(
                     x => handler.OnProtocolException += x);
 
-                handler.GrowingObjectGet(Log.GetUri().ToString(), "missing-part");
+                sendRequest(handler);
 
                 var exception = await onProtocolException;
                 Assert.IsNotNull(exception?.Message);
@@ -83,7 +117,7 @@ namespace PDS.WITSMLstudio.Store.Data.Logs
             }
             finally
             {
-                aclRuleStore.Delete(username, Log.Uid, AclResourceType.DataObject, AclAction.Read);
+                aclRuleStore.Delete(username, Log.Uid, AclResourceType.DataObject, action);
                 WitsmlSettings.IsUserAuthorizationEnabled = originalAuthorizationEnabled;
                 authorizationProvider.UserAuthorizationAdapters = originalAdapters;
             }
