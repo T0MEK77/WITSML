@@ -185,8 +185,7 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
                 {
                     var dataProvider = _container.Resolve<IEtpDataProvider>(
                         new ObjectName(uri.ObjectType, uri.Family, uri.Version));
-                    if (!dataProvider.Exists(uri))
-                        throw new WitsmlException(ErrorCodes.InsufficientOperationRights);
+                    dataProvider.CheckObjectAccess(AclAction.Update, uri);
                 }
                 catch (WitsmlException)
                 {
