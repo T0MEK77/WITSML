@@ -276,10 +276,11 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
                 return false;
 
             var channelUri = new EtpUri(metadata.ChannelUri);
+            var providerUri = GetChannelProviderUri(channelUri);
             try
             {
                 Container.Resolve<IEtpDataProvider>(
-                    new ObjectName(channelUri.ObjectType, channelUri.Family, channelUri.Version))
+                    new ObjectName(providerUri.ObjectType, providerUri.Family, providerUri.Version))
                     .CheckObjectAccess(WitsmlOperationContext.Current.User, AclAction.Read, channelUri);
                 return true;
             }
@@ -657,6 +658,12 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
             }
         }
 
+        private static EtpUri GetChannelProviderUri(EtpUri channelUri)
+        {
+            var providerUri = channelUri.Parent;
+            return string.IsNullOrWhiteSpace(providerUri.ObjectId) ? channelUri : providerUri;
+        }
+
         private void AuthorizeStreamingContexts(IEnumerable<ChannelStreamingContext> contextList, string username)
         {
             foreach (var context in contextList)
@@ -668,8 +675,9 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
                 if (channelUri == null)
                     throw new WitsmlException(ErrorCodes.InsufficientOperationRights);
 
+                var providerUri = GetChannelProviderUri(channelUri);
                 Container.Resolve<IEtpDataProvider>(
-                    new ObjectName(channelUri.ObjectType, channelUri.Family, channelUri.Version))
+                    new ObjectName(providerUri.ObjectType, providerUri.Family, providerUri.Version))
                     .CheckObjectAccess(username, AclAction.Read, channelUri);
             }
         }
