@@ -596,6 +596,8 @@ namespace PDS.WITSMLstudio.Store.Data.Logs
     }
 }
 
+namespace PDS.WITSMLstudio.Store.Data.Logs
+{
 /// <summary>
 /// Test-only ETP 1.1 customer handler that sends all required fields for
 /// GrowingObjectDeleteRange. The upstream DevKit handler currently omits
@@ -620,4 +622,5 @@ internal sealed class AclGrowingObjectCustomerHandler : Energistics.Etp.v11.Prot
 
         return Session.SendMessage(header, message);
     }
+}
 }
