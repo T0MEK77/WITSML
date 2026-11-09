@@ -350,9 +350,20 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
         {
             // Revalidate immediately before persistence; ACLs may have changed
             // while the asynchronous channel data block was being buffered.
-            _container.Resolve<IEtpDataProvider>(
-                new ObjectName(uri.ObjectType, uri.Family, uri.Version))
-                .CheckObjectAccess(_streamingUsername, AclAction.Update, uri);
+            try
+            {
+                _container.Resolve<IEtpDataProvider>(
+                    new ObjectName(uri.ObjectType, uri.Family, uri.Version))
+                    .CheckObjectAccess(_streamingUsername, AclAction.Update, uri);
+            }
+            catch (WitsmlException)
+            {
+                // Timer-driven flushes must discard unauthorized data without
+                // allowing an exception to escape the background timer callback.
+                dataBlock.Clear();
+                return;
+            }
+
             var reader = dataBlock.GetReader();
             dataBlock.Clear();
 
