@@ -41,6 +41,49 @@ namespace PDS.WITSMLstudio.Store.Security
                 .DeleteMany(Builders<AclRule>.Filter.Eq(x => x.ResourceId, _resourceId));
         }
 
+
+        [TestMethod]
+        [ExpectedException(typeof(ArgumentNullException))]
+        public void MongoDbAclRuleStore_Save_Null_Rule_Throws_Validation_Exception()
+        {
+            _store.Save(null);
+        }
+
+        [TestMethod]
+        [ExpectedException(typeof(ArgumentException))]
+        public void MongoDbAclRuleStore_Save_Blank_Username_Throws_Validation_Exception()
+        {
+            _store.Save(new AclRule
+            {
+                Username = " ",
+                ResourceId = _resourceId,
+                ResourceType = AclResourceType.Well,
+                Action = AclAction.Read,
+                Effect = AclEffect.Allow
+            });
+        }
+
+        [TestMethod]
+        [ExpectedException(typeof(ArgumentException))]
+        public void MongoDbAclRuleStore_Save_Blank_Resource_Id_Throws_Validation_Exception()
+        {
+            _store.Save(new AclRule
+            {
+                Username = "acl-test-user",
+                ResourceId = " ",
+                ResourceType = AclResourceType.Well,
+                Action = AclAction.Read,
+                Effect = AclEffect.Allow
+            });
+        }
+
+        [TestMethod]
+        [ExpectedException(typeof(ArgumentNullException))]
+        public void MongoDbAclRuleStore_GetRules_Null_Resource_Ids_Throws_Validation_Exception()
+        {
+            _store.GetRules(null);
+        }
+
         [TestMethod]
         public void MongoDbAclRuleStore_Save_And_GetRules_Persist_Rule()
         {
