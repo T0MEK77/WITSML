@@ -478,7 +478,7 @@ namespace PDS.WITSMLstudio.Store.Security
 
             public string ConnectionString
             {
-                get { return _client.Settings.Server.ToString(); }
+                get { return "mongodb://" + _client.Settings.Server; }
             }
 
             public string DatabaseName
