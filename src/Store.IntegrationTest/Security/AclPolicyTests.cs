@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -246,7 +247,7 @@ namespace PDS.WITSMLstudio.Store.Security
 
                 var provider = new UserAuthorizationProvider { AclRuleStore = null };
 
-                var exception = Assert.ThrowsException<WitsmlException>(() =>
+                var exception = AssertAccessDenied(() =>
                     provider.CheckObjectAccess("alice", AclAction.Read, Hierarchy()));
 
                 Assert.AreEqual(ErrorCodes.InsufficientOperationRights, exception.ErrorCode);
@@ -400,6 +401,22 @@ namespace PDS.WITSMLstudio.Store.Security
                 WitsmlSettings.IsUserAuthorizationEnabled = originalEnabled;
                 WitsmlSettings.AclAdministratorUsers = originalAdministrators;
             }
+        }
+
+
+        private static WitsmlException AssertAccessDenied(Action action)
+        {
+            try
+            {
+                action();
+            }
+            catch (WitsmlException exception)
+            {
+                return exception;
+            }
+
+            Assert.Fail("Expected an InsufficientOperationRights exception.");
+            return null;
         }
 
         private sealed class TestAclRuleStore : IAclRuleStore
