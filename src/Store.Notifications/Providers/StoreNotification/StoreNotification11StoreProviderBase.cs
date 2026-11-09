@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.Composition;
 using System.Linq;
 using Energistics.DataAccess;
 using Witsml200 = Energistics.DataAccess.WITSML200;
@@ -26,6 +27,8 @@ using Energistics.Etp.v11.Datatypes.Object;
 using Energistics.Etp.v11.Protocol.StoreNotification;
 using Newtonsoft.Json.Linq;
 using PDS.WITSMLstudio.Framework;
+using PDS.WITSMLstudio.Store;
+using PDS.WITSMLstudio.Store.Data.Security;
 
 namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
 {
@@ -37,6 +40,7 @@ namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
     {
         private readonly Dictionary<string, IMessageHeader> _headers;
         private readonly List<NotificationRequest> _requests;
+        private readonly Dictionary<string, string> _subscribers;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="StoreNotification11StoreProviderBase"/> class.
@@ -45,7 +49,12 @@ namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
         {
             _headers = new Dictionary<string, IMessageHeader>();
             _requests = new List<NotificationRequest>();
+            _subscribers = new Dictionary<string, string>();
         }
+
+        /// <summary>Authorization service used to filter asynchronous notifications.</summary>
+        [Import]
+        public IUserAuthorizationProvider AuthorizationProvider { get; set; }
 
         /// <summary>
         /// Handles the notification request.
@@ -64,6 +73,7 @@ namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
             else
             {
                 _headers[request.Request.Uuid] = header;
+                _subscribers[request.Request.Uuid] = WitsmlOperationContext.Current.User;
                 _requests.Add(request);
             }
         }
@@ -87,6 +97,7 @@ namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
             {
                 _requests.Remove(message);
                 _headers.Remove(message.Request.Uuid);
+                _subscribers.Remove(message.Request.Uuid);
             }
         }
 
@@ -136,9 +147,20 @@ namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
             if (request == null) return;
 
             IMessageHeader header;
-            if (!_headers.TryGetValue(request.Request.Uuid, out header)) return;
+            string username;
+            if (!_headers.TryGetValue(request.Request.Uuid, out header)
+                || !_subscribers.TryGetValue(request.Request.Uuid, out username)) return;
 
             var etpUri = new EtpUri(uri);
+
+            try
+            {
+                AuthorizationProvider.CheckObjectAccess(username, AclAction.Read, AclResourceHierarchy.FromUri(etpUri));
+            }
+            catch (WitsmlException)
+            {
+                return;
+            }
 
             action(header, new ObjectChange
             {
