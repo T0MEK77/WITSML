@@ -49,6 +49,64 @@ jobs:
           msbuild src/PDS.WITSMLstudio.sln /m /p:Configuration=Release /p:Platform="Any CPU" /p:TargetFrameworkRootPath="$referenceRoot" /p:RunCodeAnalysis=false /verbosity:minimal
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Start MongoDB for ACL persistence tests
+        shell: pwsh
+        run: |
+          $mongoArchive = Join-Path $env:RUNNER_TEMP "mongodb.zip"
+          $mongoRoot = Join-Path $env:RUNNER_TEMP "mongodb"
+          $mongoData = Join-Path $env:RUNNER_TEMP "mongodb-data"
+          New-Item -ItemType Directory -Force -Path $mongoRoot, $mongoData | Out-Null
+          Invoke-WebRequest -Uri "https://fastdl.mongodb.org/windows/mongodb-windows-x86_64-4.4.29.zip" -OutFile $mongoArchive
+          Expand-Archive -Path $mongoArchive -DestinationPath $mongoRoot -Force
+          $mongod = Get-ChildItem $mongoRoot -Filter mongod.exe -Recurse | Select-Object -First 1
+          if ($null -eq $mongod) {
+            throw "mongod.exe was not found in the downloaded MongoDB archive."
+          }
+          $mongoLog = Join-Path $env:RUNNER_TEMP "mongod.log"
+          $mongoProcess = Start-Process -FilePath $mongod.FullName -ArgumentList @("--dbpath", $mongoData, "--bind_ip", "127.0.0.1", "--port", "27017", "--logpath", $mongoLog) -PassThru
+          $ready = $false
+          for ($attempt = 0; $attempt -lt 60; $attempt++) {
+            if ($mongoProcess.HasExited) {
+              Get-Content $mongoLog -ErrorAction SilentlyContinue
+              throw "MongoDB exited before becoming ready."
+            }
+            $client = New-Object System.Net.Sockets.TcpClient
+            try {
+              $client.Connect("127.0.0.1", 27017)
+              $ready = $true
+              break
+            }
+            catch {
+              Start-Sleep -Seconds 2
+            }
+            finally {
+              $client.Dispose()
+            }
+          }
+          if (!$ready) {
+            Get-Content $mongoLog -ErrorAction SilentlyContinue
+            throw "MongoDB did not become ready within 120 seconds."
+          }
+
+      - name: Run MongoDB ACL persistence tests
+        shell: pwsh
+        run: |
+          $testAssembly = "src/Store.MongoDb.IntegrationTest/bin/Release/PDS.WITSMLstudio.Store.MongoDb.IntegrationTest.dll"
+          if (!(Test-Path $testAssembly)) {
+            throw "MongoDB integration test assembly not found: $testAssembly"
+          }
+          $vswhere = Get-ChildItem "${env:ProgramFiles(x86)}\\Microsoft Visual Studio\\Installer" -Filter vswhere.exe -Recurse | Select-Object -First 1
+          if ($null -eq $vswhere) {
+            throw "vswhere.exe was not found."
+          }
+          $installPath = & $vswhere.FullName -latest -products '*' -property installationPath
+          $runner = Join-Path $installPath "Common7\\IDE\\CommonExtensions\\Microsoft\\TestWindow\\vstest.console.exe"
+          if (!(Test-Path $runner)) {
+            throw "VSTest runner not found: $runner"
+          }
+          & $runner $testAssembly /Settings:src/External/test.runsettings /TestCaseFilter:"FullyQualifiedName~AclRuleStoreTests"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Run core unit tests
         shell: pwsh
         run: |
