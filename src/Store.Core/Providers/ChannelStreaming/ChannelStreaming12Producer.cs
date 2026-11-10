@@ -232,7 +232,7 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
         /// <param name="startStreaming">The start streaming.</param>
         protected override void HandleStartStreaming(IMessageHeader header, StartStreaming startStreaming)
         {
-            _streamingUsername = WitsmlOperationContext.Current.User;
+            _streamingUsername = WitsmlOperationContext.GetAuthenticatedUser(Session);
 
             // No action needed if streaming already started
             if (_tokenSource != null) return;

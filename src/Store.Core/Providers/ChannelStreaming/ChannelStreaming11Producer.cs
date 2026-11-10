@@ -261,7 +261,7 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
         /// <param name="channelStreamingStart">The channel streaming start.</param>
         protected override void HandleChannelStreamingStart(IMessageHeader header, ChannelStreamingStart channelStreamingStart)
         {
-            _streamingUsername = WitsmlOperationContext.Current.User;
+            _streamingUsername = WitsmlOperationContext.GetAuthenticatedUser(Session);
 
             // no action needed if streaming already started
             //if (_tokenSource != null)
@@ -639,7 +639,7 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
             try
             {
                 ResolveChannelDataProvider(channelUri)
-                    .CheckObjectAccess(WitsmlOperationContext.Current.User, AclAction.Read, channelUri);
+                    .CheckObjectAccess(WitsmlOperationContext.GetAuthenticatedUser(Session), AclAction.Read, channelUri);
                 return true;
             }
             catch (WitsmlException)

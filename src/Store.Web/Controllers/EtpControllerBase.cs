@@ -216,13 +216,12 @@ namespace PDS.WITSMLstudio.Store.Controllers
         /// <returns>An awaitable <see cref="Task"/>.</returns>
         protected virtual async Task AcceptWebSocketRequest(AspNetWebSocketContext context)
         {
-            // Capture the principal authenticated during the HTTP WebSocket handshake.
-            // The ETP protocol handlers run after the HTTP request context has ended.
-            WitsmlOperationContext.Current.SetAuthenticatedUser(context.User);
-
             var headers = GetWebSocketHeaders(context.Headers, context.QueryString);
             using (var etpServer = CreateEtpServer(context.WebSocket, headers))
             {
+                // Bind the handshake-authenticated principal to this ETP session. Protocol
+                // callbacks may execute on socket worker threads with a different call context.
+                WitsmlOperationContext.SetAuthenticatedUser(etpServer, context.User);
                 etpServer.SupportedObjects = GetSupportedObjects();
                 await etpServer.HandleConnection(CancellationToken.None);
             }

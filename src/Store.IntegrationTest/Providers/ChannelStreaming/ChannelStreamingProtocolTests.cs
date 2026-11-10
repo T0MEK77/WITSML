@@ -61,6 +61,12 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
             DevKit = new DevKit141Aspect(TestContext);
 
             EtpSetUp(DevKit.Container);
+            // The self-hosted test server bypasses the ASP.NET authentication handshake.
+            // Inject a test principal at the session boundary, matching the production binding.
+            _server.SessionConnected += (sender, session) =>
+                WitsmlOperationContext.SetAuthenticatedUser(
+                    session,
+                    new GenericPrincipal(new GenericIdentity(TestSettings.Username), new string[0]));
             _server.Start();
         }
 
