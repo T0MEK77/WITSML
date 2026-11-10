@@ -257,6 +257,7 @@ namespace PDS.WITSMLstudio.Store.Data.Logs
                     Uri = Log.GetUri().ToString(),
                     Uuid = requestUuid
                 });
+                await WaitForSubscriptionOwnerAsync("ETP11:" + requestUuid);
 
                 otherClient = InitClient(CreateClient(_etpServerUrl, "acl-other-user", TestSettings.Password));
                 var otherSession = HandleAsync<OpenSession>(x => otherClient.Handler<ICoreClient>().OnOpenSession += x);
@@ -309,6 +310,7 @@ namespace PDS.WITSMLstudio.Store.Data.Logs
                     IncludeObjectData = true,
                     RequestUuid = requestUuid.ToUuid()
                 });
+                await WaitForSubscriptionOwnerAsync("ETP12:" + requestUuid.ToUuid());
 
                 otherClient = InitClient(CreateClient(_etpServerUrl, "acl-other-user", TestSettings.Password));
                 var otherSession = HandleAsync<Etp12OpenSession>(x => otherClient.Handler<Etp12CoreClient>().OnOpenSession += x);
@@ -328,6 +330,28 @@ namespace PDS.WITSMLstudio.Store.Data.Logs
                 WitsmlSettings.IsUserAuthorizationEnabled = originalAuthorizationEnabled;
                 authorizationProvider.UserAuthorizationAdapters = originalAdapters;
             }
+        }
+
+        private static async Task WaitForSubscriptionOwnerAsync(string registryKey)
+        {
+            const int timeoutInMilliseconds = 5000;
+            var timeoutAt = System.DateTime.UtcNow.AddMilliseconds(timeoutInMilliseconds);
+            string owner;
+
+            while (System.DateTime.UtcNow < timeoutAt)
+            {
+                if (PDS.WITSMLstudio.Store.Providers.StoreNotification.StoreNotificationSubscriptionOwnerRegistry.TryGetOwner(registryKey, out owner))
+                {
+                    Assert.IsTrue(
+                        System.String.Equals(TestSettings.Username, owner, System.StringComparison.OrdinalIgnoreCase),
+                        "The subscription owner does not match the authenticated test user.");
+                    return;
+                }
+
+                await Task.Delay(25);
+            }
+
+            Assert.Fail($"Store Notification subscription '{registryKey}' was not registered within {timeoutInMilliseconds} ms.");
         }
 
         private async Task AssertGrowingObjectDeniedAfterSessionAsync(AclAction action, System.Action<IGrowingObjectCustomer> sendRequest)
