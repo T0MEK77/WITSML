@@ -20,6 +20,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Security.Principal;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Xml.Linq;
 using Energistics.DataAccess.WITSML141.ComponentSchemas;
