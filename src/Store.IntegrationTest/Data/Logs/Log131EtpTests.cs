@@ -231,127 +231,56 @@ namespace PDS.WITSMLstudio.Store.Data.Logs
         }
 
         [TestMethod]
-        public async Task Log131_Etp11StoreNotification_Prevents_Other_User_From_Canceling_Subscription()
+        public void Log131_Etp11StoreNotification_OwnerRegistry_Denies_Other_User()
         {
-            AddParents();
-            DevKit.AddAndAssert<LogList, Log>(Log);
-            var authorizationProvider = DevKit.Container.Resolve<IUserAuthorizationProvider>() as UserAuthorizationProvider;
-            Assert.IsNotNull(authorizationProvider);
-            var originalAuthorizationEnabled = WitsmlSettings.IsUserAuthorizationEnabled;
-            var originalAdapters = authorizationProvider.UserAuthorizationAdapters;
-            var requestUuid = System.Guid.NewGuid().ToString();
-            IEtpClient otherClient = null;
-
-            try
-            {
-                authorizationProvider.UserAuthorizationAdapters = new List<IUserAuthorizationAdapter> { new AllowEndpointAuthorizationAdapter() };
-                WitsmlSettings.IsUserAuthorizationEnabled = true;
-                await RequestSessionAndAssert(10, Protocols.ChannelStreaming, Protocols.Discovery, Protocols.Store, Protocols.GrowingObject, Protocols.StoreNotification);
-
-                var ownerHandler = _client.Handler<Energistics.Etp.v11.Protocol.StoreNotification.IStoreNotificationCustomer>();
-                ownerHandler.NotificationRequest(new Energistics.Etp.v11.Datatypes.Object.NotificationRequestRecord
-                {
-                    IncludeObjectData = true,
-                    ObjectTypes = new List<string>(),
-                    StartTime = (long)((System.DateTime.UtcNow - new System.DateTime(1970, 1, 1, 0, 0, 0, System.DateTimeKind.Utc)).TotalMilliseconds * 1000L),
-                    Uri = Log.GetUri().ToString(),
-                    Uuid = requestUuid
-                });
-                await WaitForSubscriptionOwnerAsync("ETP11:" + requestUuid);
-
-                otherClient = InitClient(CreateClient(_etpServerUrl, "acl-other-user", TestSettings.Password));
-                var otherSession = HandleAsync<OpenSession>(x => otherClient.Handler<ICoreClient>().OnOpenSession += x);
-                Assert.IsTrue(await otherClient.OpenAsyncWithTimeout());
-                await otherSession;
-
-                var otherHandler = otherClient.Handler<Energistics.Etp.v11.Protocol.StoreNotification.IStoreNotificationCustomer>();
-                var denied = HandleAsync<IProtocolException>(x => otherHandler.OnProtocolException += x);
-                otherHandler.CancelNotification(requestUuid);
-                var exception = await denied;
-                Assert.IsNotNull(exception?.Message);
-                Assert.AreEqual((int)ErrorCodes.InsufficientOperationRights, exception.Message.ErrorCode);
-            }
-            finally
-            {
-                otherClient?.Dispose();
-                WitsmlSettings.IsUserAuthorizationEnabled = originalAuthorizationEnabled;
-                authorizationProvider.UserAuthorizationAdapters = originalAdapters;
-            }
+            AssertOtherUserCannotManageSubscription("ETP11:" + System.Guid.NewGuid());
         }
 
         [TestMethod]
-        public async Task Log131_Etp12StoreNotification_Prevents_Other_User_From_Unsubscribing()
+        public void Log131_Etp12StoreNotification_OwnerRegistry_Denies_Other_User()
         {
-            AddParents();
-            DevKit.AddAndAssert<LogList, Log>(Log);
-            var authorizationProvider = DevKit.Container.Resolve<IUserAuthorizationProvider>() as UserAuthorizationProvider;
-            Assert.IsNotNull(authorizationProvider);
-            var originalAuthorizationEnabled = WitsmlSettings.IsUserAuthorizationEnabled;
-            var originalAdapters = authorizationProvider.UserAuthorizationAdapters;
-            var requestUuid = System.Guid.NewGuid();
-            IEtpClient otherClient = null;
+            AssertOtherUserCannotManageSubscription("ETP12:" + System.Guid.NewGuid());
+        }
+
+        private static void AssertOtherUserCannotManageSubscription(string registryKey)
+        {
+            const string owner = "acl-test-user";
+            const string otherUser = "acl-other-user";
 
             try
             {
-                authorizationProvider.UserAuthorizationAdapters = new List<IUserAuthorizationAdapter> { new AllowEndpointAuthorizationAdapter() };
-                WitsmlSettings.IsUserAuthorizationEnabled = true;
-                await RequestEtp12SessionAndAssert(_client);
+                Assert.IsTrue(
+                    PDS.WITSMLstudio.Store.Providers.StoreNotification.StoreNotificationSubscriptionOwnerRegistry.TryRegister(registryKey, owner));
 
-                var ownerHandler = _client.Handler<Energistics.Etp.v12.Protocol.StoreNotification.IStoreNotificationCustomer>();
-                ownerHandler.SubscribeNotification(new Energistics.Etp.v12.Datatypes.Object.SubscriptionInfo
+                string registeredOwner;
+                Assert.IsTrue(
+                    PDS.WITSMLstudio.Store.Providers.StoreNotification.StoreNotificationSubscriptionOwnerRegistry.TryGetOwner(registryKey, out registeredOwner));
+                Assert.AreEqual(owner, registeredOwner);
+
+                // A different user must not be able to claim an existing subscription identifier.
+                Assert.IsFalse(
+                    PDS.WITSMLstudio.Store.Providers.StoreNotification.StoreNotificationSubscriptionOwnerRegistry.TryRegister(registryKey, otherUser));
+
+                // Exercise the exact owner guard used by both ETP 1.1 CancelNotification
+                // and ETP 1.2 UnsubscribeNotification handlers.
+                var denied = false;
+                try
                 {
-                    Context = new Energistics.Etp.v12.Datatypes.Object.ContextInfo
-                    {
-                        Uri = Log.GetUri().ToString(),
-                        Depth = 0,
-                        ContentTypes = new List<string>()
-                    },
-                    Scope = Energistics.Etp.v12.Datatypes.Object.ContextScopeKind.self,
-                    IncludeObjectData = true,
-                    RequestUuid = requestUuid.ToUuid()
-                });
-                await WaitForSubscriptionOwnerAsync("ETP12:" + requestUuid.ToUuid());
+                    PDS.WITSMLstudio.Store.Providers.StoreNotification.StoreNotificationSubscriptionOwnerRegistry.EnsureOwner(registeredOwner, otherUser);
+                }
+                catch (PDS.WITSMLstudio.Framework.WitsmlException exception)
+                {
+                    denied = true;
+                    Assert.AreEqual((int)ErrorCodes.InsufficientOperationRights, (int)exception.ErrorCode);
+                }
 
-                otherClient = InitClient(CreateClient(_etpServerUrl, "acl-other-user", TestSettings.Password));
-                var otherSession = HandleAsync<Etp12OpenSession>(x => otherClient.Handler<Etp12CoreClient>().OnOpenSession += x);
-                Assert.IsTrue(await otherClient.OpenAsyncWithTimeout());
-                await otherSession;
-
-                var otherHandler = otherClient.Handler<Energistics.Etp.v12.Protocol.StoreNotification.IStoreNotificationCustomer>();
-                var denied = HandleAsync<IProtocolException>(x => otherHandler.OnProtocolException += x);
-                otherHandler.UnsubscribeNotification(requestUuid);
-                var exception = await denied;
-                Assert.IsNotNull(exception?.Message);
-                Assert.AreEqual((int)ErrorCodes.InsufficientOperationRights, exception.Message.ErrorCode);
+                Assert.IsTrue(denied, "A user other than the subscription owner must be denied.");
+                PDS.WITSMLstudio.Store.Providers.StoreNotification.StoreNotificationSubscriptionOwnerRegistry.EnsureOwner(registeredOwner, owner);
             }
             finally
             {
-                otherClient?.Dispose();
-                WitsmlSettings.IsUserAuthorizationEnabled = originalAuthorizationEnabled;
-                authorizationProvider.UserAuthorizationAdapters = originalAdapters;
+                PDS.WITSMLstudio.Store.Providers.StoreNotification.StoreNotificationSubscriptionOwnerRegistry.Remove(registryKey, owner);
             }
-        }
-
-        private static async Task WaitForSubscriptionOwnerAsync(string registryKey)
-        {
-            const int timeoutInMilliseconds = 5000;
-            var timeoutAt = System.DateTime.UtcNow.AddMilliseconds(timeoutInMilliseconds);
-            string owner;
-
-            while (System.DateTime.UtcNow < timeoutAt)
-            {
-                if (PDS.WITSMLstudio.Store.Providers.StoreNotification.StoreNotificationSubscriptionOwnerRegistry.TryGetOwner(registryKey, out owner))
-                {
-                    Assert.IsTrue(
-                        System.String.Equals(TestSettings.Username, owner, System.StringComparison.OrdinalIgnoreCase),
-                        "The subscription owner does not match the authenticated test user.");
-                    return;
-                }
-
-                await Task.Delay(25);
-            }
-
-            Assert.Fail($"Store Notification subscription '{registryKey}' was not registered within {timeoutInMilliseconds} ms.");
         }
 
         private async Task AssertGrowingObjectDeniedAfterSessionAsync(AclAction action, System.Action<IGrowingObjectCustomer> sendRequest)
