@@ -4,9 +4,11 @@ on:
   push:
     branches:
       - feature/user-data-permissions
+      - main
   pull_request:
     branches:
       - main
+  workflow_dispatch:
 
 concurrency:
   group: acl-ci-${{ github.ref }}
