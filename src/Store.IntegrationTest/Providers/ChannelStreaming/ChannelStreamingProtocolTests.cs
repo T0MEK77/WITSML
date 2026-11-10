@@ -34,6 +34,7 @@ using Energistics.Etp.v11.Protocol.ChannelStreaming;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using PDS.WITSMLstudio.Framework;
 using PDS.WITSMLstudio.Store.Configuration;
+using PDS.WITSMLstudio.Store;
 using PDS.WITSMLstudio.Store.Data.Security;
 using PDS.WITSMLstudio.Compatibility;
 using Shouldly;
@@ -268,9 +269,11 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
                 // The self-hosted ETP test server has no ASP.NET HttpContext.
                 // Establish the authenticated test identity on the server request
                 // thread so object ACL checks do not see the "unknown" placeholder.
-                Thread.CurrentPrincipal = new GenericPrincipal(
+                var principal = new GenericPrincipal(
                     new GenericIdentity(TestSettings.Username),
                     new string[0]);
+                Thread.CurrentPrincipal = principal;
+                WitsmlOperationContext.Current.SetAuthenticatedUser(principal);
 
                 return true;
             }

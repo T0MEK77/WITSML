@@ -19,6 +19,8 @@
 using System;
 using System.Collections.Generic;
 using System.ServiceModel;
+using System.Runtime.Remoting.Messaging;
+using System.Security.Principal;
 using System.Threading;
 using System.Web;
 using System.Xml.Linq;
@@ -40,8 +42,9 @@ namespace PDS.WITSMLstudio.Store
     {
         private static readonly ILog _log = LogManager.GetLogger(typeof(WitsmlOperationContext));
 
-        [ThreadStatic]
-        private static WitsmlOperationContext _current;
+        private const string CurrentContextSlot = "PDS.WITSMLstudio.Store.WitsmlOperationContext.Current";
+
+        private string _authenticatedUser;
 
         /// <summary>
         /// Prevents a default instance of the <see cref="WitsmlOperationContext"/> class from being created.
@@ -71,7 +74,14 @@ namespace PDS.WITSMLstudio.Store
             {
                 if (OperationContext.Current == null)
                 {
-                    return _current ?? (_current = new WitsmlOperationContext());
+                    var current = CallContext.LogicalGetData(CurrentContextSlot) as WitsmlOperationContext;
+                    if (current == null)
+                    {
+                        current = new WitsmlOperationContext();
+                        CallContext.LogicalSetData(CurrentContextSlot, current);
+                    }
+
+                    return current;
                 }
 
                 return OperationContext.Current.Extensions.Find<WitsmlOperationContext>()
@@ -80,7 +90,7 @@ namespace PDS.WITSMLstudio.Store
             internal set
             {
                 if (OperationContext.Current == null)
-                    _current = value;
+                    CallContext.LogicalSetData(CurrentContextSlot, value);
             }
         }
 
@@ -92,13 +102,28 @@ namespace PDS.WITSMLstudio.Store
         {
             get
             {
-                var user = HttpContext.Current?.User?.Identity?.Name;
+                var user = _authenticatedUser;
+
+                if (string.IsNullOrWhiteSpace(user))
+                    user = HttpContext.Current?.User?.Identity?.Name;
 
                 if (string.IsNullOrWhiteSpace(user))
                     user = Thread.CurrentPrincipal?.Identity?.Name;
 
                 return string.IsNullOrWhiteSpace(user) ? "unknown" : user;
             }
+        }
+
+        /// <summary>
+        /// Captures the authenticated identity associated with an ETP WebSocket session.
+        /// Only an authenticated principal is accepted.
+        /// </summary>
+        internal void SetAuthenticatedUser(IPrincipal principal)
+        {
+            var identity = principal?.Identity;
+            _authenticatedUser = identity != null && identity.IsAuthenticated
+                ? identity.Name
+                : null;
         }
 
         /// <summary>

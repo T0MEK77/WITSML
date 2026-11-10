@@ -32,6 +32,7 @@ using System.Web.WebSockets;
 using Energistics.Etp.Common;
 using Energistics.Etp.Common.Datatypes;
 using PDS.WITSMLstudio.Framework;
+using PDS.WITSMLstudio.Store;
 using PDS.WITSMLstudio.Store.Configuration;
 using PDS.WITSMLstudio.Store.Data;
 using PDS.WITSMLstudio.Store.Providers;
@@ -215,6 +216,10 @@ namespace PDS.WITSMLstudio.Store.Controllers
         /// <returns>An awaitable <see cref="Task"/>.</returns>
         protected virtual async Task AcceptWebSocketRequest(AspNetWebSocketContext context)
         {
+            // Capture the principal authenticated during the HTTP WebSocket handshake.
+            // The ETP protocol handlers run after the HTTP request context has ended.
+            WitsmlOperationContext.Current.SetAuthenticatedUser(context.User);
+
             var headers = GetWebSocketHeaders(context.Headers, context.QueryString);
             using (var etpServer = CreateEtpServer(context.WebSocket, headers))
             {
