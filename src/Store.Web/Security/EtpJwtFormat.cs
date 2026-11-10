@@ -49,6 +49,31 @@ namespace PDS.WITSMLstudio.Store.Security
         }
 
         /// <summary>
+        /// Decodes and validates the shared Base64URL JWT signing secret.
+        /// The decoded key must contain at least 256 bits of cryptographically random material.
+        /// </summary>
+        internal static byte[] GetSigningKeyBytes(string secret)
+        {
+            if (string.IsNullOrWhiteSpace(secret))
+                throw new InvalidOperationException("The jwt.secret setting must be supplied by protected deployment configuration.");
+
+            byte[] keyBytes;
+            try
+            {
+                keyBytes = TextEncodings.Base64Url.Decode(secret);
+            }
+            catch (FormatException exception)
+            {
+                throw new InvalidOperationException("The jwt.secret setting must be a valid Base64URL-encoded key.", exception);
+            }
+
+            if (keyBytes == null || keyBytes.Length < 32)
+                throw new InvalidOperationException("The decoded jwt.secret key must contain at least 32 bytes.");
+
+            return keyBytes;
+        }
+
+        /// <summary>
         /// Encrypts the authentication data in JSON Web Token format.
         /// </summary>
         /// <param name="data">The token data.</param>
@@ -61,7 +86,7 @@ namespace PDS.WITSMLstudio.Store.Security
                 throw new ArgumentNullException(nameof(data));
             }
 
-            var keyByteArray = TextEncodings.Base64Url.Decode(_secret);
+            var keyByteArray = GetSigningKeyBytes(_secret);
             var securityKey = new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(keyByteArray);
             var signingKey = new Microsoft.IdentityModel.Tokens.SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256Signature);
 

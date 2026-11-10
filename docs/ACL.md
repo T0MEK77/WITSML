@@ -18,9 +18,10 @@ The value is a comma- or semicolon-separated list. It is read from server config
 
 The repository configuration intentionally contains no JWT signing key or fixed
 ASP.NET machine key. Supply `jwt.secret` through a protected deployment
-transform or secret-management mechanism; use at least 32 UTF-8 bytes generated
-from a cryptographically secure random source. The ETP JWT authentication module
-fails closed when the setting is missing or shorter than 32 bytes. Never reuse
+transform or secret-management mechanism; configure it as a Base64URL-encoded
+representation of at least 32 cryptographically random bytes. Both JWT issuance
+and validation decode the same key bytes and fail closed when the setting is
+missing, malformed, or decodes to fewer than 32 bytes. Never reuse
 the previously committed signing key: treat it as compromised and rotate it in
 every environment before enabling JWT authentication.
 
