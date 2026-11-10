@@ -88,15 +88,21 @@ namespace PDS.WITSMLstudio.Store.Data.Security
             if (!WitsmlSettings.IsUserAuthorizationEnabled)
                 return;
 
+            // Never evaluate ACL using the placeholder identity returned when
+            // the HTTP host has not authenticated the request. In particular, a
+            // wildcard Allow must not grant access to an unauthenticated caller.
+            if (string.IsNullOrWhiteSpace(username) ||
+                string.Equals(username, "unknown", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new WitsmlException(ErrorCodes.InsufficientOperationRights);
+            }
+
             // Only server-configured usernames bypass object ACL. Do not trust
             // roles or administrator flags supplied by the ETP/SOAP client.
             if (IsAclAdministrator(username))
                 return;
 
             if (AclRuleStore == null)
-                throw new WitsmlException(ErrorCodes.InsufficientOperationRights);
-
-            if (string.IsNullOrWhiteSpace(username))
                 throw new WitsmlException(ErrorCodes.InsufficientOperationRights);
 
             if (resourceHierarchy == null)
