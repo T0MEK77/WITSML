@@ -268,7 +268,7 @@ namespace PDS.WITSMLstudio.Store.Data.Logs
                 {
                     PDS.WITSMLstudio.Store.Providers.StoreNotification.StoreNotificationSubscriptionOwnerRegistry.EnsureOwner(registeredOwner, otherUser);
                 }
-                catch (PDS.WITSMLstudio.Framework.WitsmlException exception)
+                catch (PDS.WITSMLstudio.WitsmlException exception)
                 {
                     denied = true;
                     Assert.AreEqual((int)ErrorCodes.InsufficientOperationRights, (int)exception.ErrorCode);
