@@ -19,7 +19,6 @@
 using System;
 using System.Collections.Generic;
 using System.ServiceModel;
-using System.Runtime.Remoting.Messaging;
 using System.Security.Principal;
 using System.Threading;
 using System.Web;
@@ -42,9 +41,10 @@ namespace PDS.WITSMLstudio.Store
     {
         private static readonly ILog _log = LogManager.GetLogger(typeof(WitsmlOperationContext));
 
-        private const string CurrentContextSlot = "PDS.WITSMLstudio.Store.WitsmlOperationContext.Current";
+        private const string AuthenticatedUserSlot = "PDS.WITSMLstudio.Store.WitsmlOperationContext.AuthenticatedUser";
 
-        private string _authenticatedUser;
+        [ThreadStatic]
+        private static WitsmlOperationContext _current;
 
         /// <summary>
         /// Prevents a default instance of the <see cref="WitsmlOperationContext"/> class from being created.
@@ -74,14 +74,7 @@ namespace PDS.WITSMLstudio.Store
             {
                 if (OperationContext.Current == null)
                 {
-                    var current = CallContext.LogicalGetData(CurrentContextSlot) as WitsmlOperationContext;
-                    if (current == null)
-                    {
-                        current = new WitsmlOperationContext();
-                        CallContext.LogicalSetData(CurrentContextSlot, current);
-                    }
-
-                    return current;
+                    return _current ?? (_current = new WitsmlOperationContext());
                 }
 
                 return OperationContext.Current.Extensions.Find<WitsmlOperationContext>()
@@ -90,7 +83,7 @@ namespace PDS.WITSMLstudio.Store
             internal set
             {
                 if (OperationContext.Current == null)
-                    CallContext.LogicalSetData(CurrentContextSlot, value);
+                    _current = value;
             }
         }
 
@@ -102,7 +95,9 @@ namespace PDS.WITSMLstudio.Store
         {
             get
             {
-                var user = _authenticatedUser;
+                // Store only the authenticated username in LogicalCallContext. The operation
+                // context itself contains non-serializable request state and must remain thread-local.
+                var user = System.Runtime.Remoting.Messaging.CallContext.LogicalGetData(AuthenticatedUserSlot) as string;
 
                 if (string.IsNullOrWhiteSpace(user))
                     user = HttpContext.Current?.User?.Identity?.Name;
@@ -121,9 +116,9 @@ namespace PDS.WITSMLstudio.Store
         internal void SetAuthenticatedUser(IPrincipal principal)
         {
             var identity = principal?.Identity;
-            _authenticatedUser = identity != null && identity.IsAuthenticated
-                ? identity.Name
-                : null;
+            System.Runtime.Remoting.Messaging.CallContext.LogicalSetData(
+                AuthenticatedUserSlot,
+                identity != null && identity.IsAuthenticated ? identity.Name : null);
         }
 
         /// <summary>
