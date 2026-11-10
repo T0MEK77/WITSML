@@ -8,6 +8,8 @@
 
 using System;
 using System.Collections.Generic;
+using PDS.WITSMLstudio.Framework;
+using PDS.WITSMLstudio.Store.Configuration;
 
 namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
 {
@@ -38,6 +40,16 @@ namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
             lock (SyncRoot)
             {
                 return Owners.TryGetValue(key, out owner);
+            }
+        }
+
+        public static void EnsureOwner(string owner, string currentUser)
+        {
+            if (string.IsNullOrWhiteSpace(owner) ||
+                string.IsNullOrWhiteSpace(currentUser) ||
+                !string.Equals(owner, currentUser, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new WitsmlException(ErrorCodes.InsufficientOperationRights);
             }
         }
 
