@@ -97,14 +97,22 @@ namespace PDS.WITSMLstudio.Store
             var url = TestSettings.EtpServerUrl.Replace($":{uri.Port}", $":{port}");
             _etpServerUrl = url;
 
-            // Create server and client instances
+            // Create server and client instances for the explicitly selected test protocol.
+            var isEtp12 = string.Equals(TestSettings.EtpVersion, "1.2", StringComparison.Ordinal);
+            Logger.Info($"Configuring ETP test server. Version: {TestSettings.EtpVersion}; username configured: {!string.IsNullOrWhiteSpace(TestSettings.Username)}");
             _server = CreateServer(port);
             _client = InitClient(CreateClient(url));
+            var expectedEtpVersion = isEtp12 ? EtpVersion.v12 : EtpVersion.v11;
+            if (_client.SupportedVersion != expectedEtpVersion)
+            {
+                throw new InvalidOperationException($"ETP client version mismatch. Expected: {expectedEtpVersion}; actual: {_client.SupportedVersion}.");
+            }
+            Logger.Info($"ETP client adapter version verified: {_client.SupportedVersion}.");
 
             // Register factories that resolve a fresh NonShared provider for each
             // ETP session. Returning a provider captured here would reuse its Session
             // property and per-session state across different authenticated clients.
-            if (string.Equals(TestSettings.EtpVersion, "1.2", StringComparison.Ordinal))
+            if (isEtp12)
             {
                 _server.Register(() => container.Resolve<Energistics.Etp.v12.Protocol.ChannelStreaming.IChannelStreamingProducer>());
                 _server.Register(() => container.Resolve<Energistics.Etp.v12.Protocol.Discovery.IDiscoveryStore>());
