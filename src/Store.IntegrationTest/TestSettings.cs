@@ -26,7 +26,14 @@ namespace PDS.WITSMLstudio.Store
     /// </summary>
     public static class TestSettings
     {
+        private const string DefaultTestUsername = "acl-test-user";
         private static IDictionary _settings;
+
+        private static string GetDefaultUsername()
+        {
+            var configuredUsername = Settings.Default.Username;
+            return string.IsNullOrWhiteSpace(configuredUsername) ? DefaultTestUsername : configuredUsername;
+        }
 
         /// <summary>
         /// The default ETP server URL
@@ -41,7 +48,7 @@ namespace PDS.WITSMLstudio.Store
         /// <summary>
         /// The default username
         /// </summary>
-        public static string Username = Settings.Default.Username;
+        public static string Username = GetDefaultUsername();
 
         /// <summary>
         /// The default password
@@ -75,7 +82,7 @@ namespace PDS.WITSMLstudio.Store
             //SoapServerUrl = $"{settings["SoapServerUrl"]}";
             var configuredUsername = settings.Contains("Username") ? settings["Username"] : null;
             Username = configuredUsername == null || string.IsNullOrWhiteSpace(configuredUsername.ToString())
-                ? Settings.Default.Username
+                ? GetDefaultUsername()
                 : configuredUsername.ToString();
             Password = $"{settings["Password"]}";
             EtpVersion = $"{settings["EtpVersion"]}";
@@ -108,7 +115,7 @@ namespace PDS.WITSMLstudio.Store
             FallbackServerUrl = Settings.Default.FallbackServerUrl;
             EtpServerUrl = Settings.Default.EtpServerUrl;
             //SoapServerUrl = Settings.Default.SoapServerUrl;
-            Username = Settings.Default.Username;
+            Username = GetDefaultUsername();
             Password = Settings.Default.Password;
             EtpVersion = Settings.Default.EtpVersion;
             //LoadTestData = Settings.Default.LoadTestData;
