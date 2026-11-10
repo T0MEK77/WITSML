@@ -14,6 +14,26 @@ Configure trusted administrator usernames in `src/Store/Web.config`:
 
 The value is a comma- or semicolon-separated list. It is read from server configuration; a client claim cannot grant administrator bypass. Administrator bypass applies to object ACL only and does not bypass the existing SOAP/ETP endpoint authorization checks.
 
+## Deployment secrets and authentication
+
+The repository configuration intentionally contains no JWT signing key or fixed
+ASP.NET machine key. Supply `jwt.secret` through a protected deployment
+transform or secret-management mechanism; use at least 32 UTF-8 bytes generated
+from a cryptographically secure random source. The ETP JWT authentication module
+fails closed when the setting is missing or shorter than 32 bytes. Never reuse
+the previously committed signing key: treat it as compromised and rotate it in
+every environment before enabling JWT authentication.
+
+For a multi-instance deployment, configure the same ASP.NET `machineKey` on
+all instances through protected deployment configuration. A single-instance
+deployment may use ASP.NET automatic key generation.
+
+Object ACL remains opt-in for backward compatibility. Set
+`IsUserAuthorizationEnabled` to `true` in the deployed configuration after
+reviewing and provisioning the ACL policy. Configure and verify the ETP
+authentication module separately; do not enable ACL in production until
+authenticated ETP sessions receive a validated server principal.
+
 ## MongoDB rules
 
 Rules are stored in the `AclRules` collection in the configured WITSML database. Each rule contains:
