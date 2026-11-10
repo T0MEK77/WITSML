@@ -20,12 +20,14 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Xml.Linq;
 using Energistics.DataAccess.WITSML200;
 using Energistics.Etp.Common.Datatypes;
 using Energistics.Etp.Common.Datatypes.Object;
 using log4net;
 using PDS.WITSMLstudio.Framework;
+using PDS.WITSMLstudio.Store.Data.Security;
 
 namespace PDS.WITSMLstudio.Store.Data
 {
@@ -97,6 +99,7 @@ namespace PDS.WITSMLstudio.Store.Data
         /// <returns>true if the data object exists; otherwise, false</returns>
         public virtual bool Exists(EtpUri uri)
         {
+            CheckObjectAccess(AclAction.Read, uri);
             return DataAdapter.Exists(uri);
         }
 
@@ -107,7 +110,7 @@ namespace PDS.WITSMLstudio.Store.Data
         /// <returns>The count of related data objects.</returns>
         public virtual int Count(EtpUri? parentUri)
         {
-            return DataAdapter.Count(parentUri);
+            return GetAll(parentUri).Count;
         }
 
         /// <summary>
@@ -117,7 +120,7 @@ namespace PDS.WITSMLstudio.Store.Data
         /// <returns>If there are any related data objects.</returns>
         public virtual bool Any(EtpUri? parentUri)
         {
-            return DataAdapter.Any(parentUri);
+            return GetAll(parentUri).Any();
         }
 
         /// <summary>
@@ -137,7 +140,8 @@ namespace PDS.WITSMLstudio.Store.Data
         /// <returns>A collection of data objects.</returns>
         public virtual List<TObject> GetAll(EtpUri? parentUri = null)
         {
-            return DataAdapter.GetAll(parentUri);
+            var items = DataAdapter.GetAll(parentUri);
+            return items.Where(item => IsObjectReadable(GetUri(item), item)).ToList();
         }
 
         /// <summary>
@@ -157,6 +161,7 @@ namespace PDS.WITSMLstudio.Store.Data
         /// <returns>The data object instance.</returns>
         public virtual TObject Get(EtpUri uri)
         {
+            CheckObjectAccess(AclAction.Read, uri);
             return DataAdapter.Get(uri);
         }
 
@@ -184,12 +189,14 @@ namespace PDS.WITSMLstudio.Store.Data
             var uri = parser.GetUri<TObject>();
             Logger.Debug($"Putting {typeof(TObject).Name} with URI '{uri}'");
 
-            if (!string.IsNullOrWhiteSpace(uri.ObjectId) && Exists(uri))
+            if (!string.IsNullOrWhiteSpace(uri.ObjectId) && DataAdapter.Exists(uri))
             {
+                CheckObjectAccess(AclAction.Update, uri);
                 Replace(parser);
             }
             else
             {
+                CheckObjectAccess(AclAction.Create, uri);
                 Add(parser);
             }
         }
@@ -200,6 +207,7 @@ namespace PDS.WITSMLstudio.Store.Data
         /// <param name="uri">The data object URI.</param>
         public virtual void Delete(EtpUri uri)
         {
+            CheckObjectAccess(AclAction.Delete, uri);
             using (var transaction = DataAdapter.GetTransaction())
             {
                 transaction.SetContext(uri);
@@ -225,7 +233,7 @@ namespace PDS.WITSMLstudio.Store.Data
         /// <param name="uri">The data object URI.</param>
         public virtual void Ensure(EtpUri uri)
         {
-            if (Exists(uri)) return;
+            if (DataAdapter.Exists(uri)) return;
             var parent = uri.Parent;
 
             using (var transaction = DataAdapter.GetTransaction())
@@ -247,6 +255,168 @@ namespace PDS.WITSMLstudio.Store.Data
                 Add(parser);
 
                 transaction.Commit();
+            }
+        }
+
+        /// <summary>Checks object ACL for the current authenticated user.</summary>
+        /// <param name="action">The requested operation.</param>
+        /// <param name="uri">The target object's URI.</param>
+        public void CheckObjectAccess(AclAction action, EtpUri uri)
+        {
+            CheckObjectAccess(WitsmlOperationContext.Current.User, action, uri);
+        }
+
+        /// <summary>
+        /// Checks object ACL for a specified user. This overload is required by
+        /// asynchronous ETP notification delivery after the original request ends.
+        /// </summary>
+        /// <summary>Checks object ACL for an explicitly supplied authenticated user.</summary>
+        /// <param name="username">The authenticated username.</param>
+        /// <param name="action">The requested operation.</param>
+        /// <param name="uri">The target object's URI.</param>
+        public void CheckObjectAccess(string username, AclAction action, EtpUri uri)
+        {
+            CheckObjectAccess(username, action, uri, null);
+        }
+
+        /// <summary>
+        /// Checks object ACL using an optional event/request payload to resolve
+        /// WITSML 2.0 parent references even after an object has been deleted.
+        /// </summary>
+        /// <summary>Checks object ACL using an optional object payload to resolve parent references.</summary>
+        /// <param name="username">The authenticated username.</param>
+        /// <param name="action">The requested operation.</param>
+        /// <param name="uri">The target object's URI.</param>
+        /// <param name="dataObject">An optional stored or request object containing ancestry references.</param>
+        public void CheckObjectAccess(string username, AclAction action, EtpUri uri, object dataObject)
+        {
+            var authorization = Container.Resolve<IUserAuthorizationProvider>();
+            var hierarchy = AclResourceHierarchy.FromUri(uri);
+
+            // WITSML 2.0 object URIs are flat. Resolve parent references using the
+            // stored/request object so notifications and protocol operations apply
+            // exactly the same Wellbore/Well inheritance rules.
+            if (uri != null && string.Equals(uri.Family, "witsml", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(uri.Version, "2.0", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(uri.ObjectType, "Well", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(uri.ObjectType, "Wellbore", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(uri.ObjectId))
+            {
+                var storedObject = GetObjectForAcl(uri, action, dataObject);
+                AddReferencedResource(hierarchy, storedObject, "Wellbore", AclResourceType.Wellbore);
+
+                var wellboreId = GetReferenceId(GetReference(storedObject, "Wellbore"));
+                if (!string.IsNullOrWhiteSpace(wellboreId))
+                {
+                    var wellboreAdapter = Container.Resolve<IWitsmlDataAdapter<Wellbore>>();
+                    var storedWellbore = wellboreAdapter.GetAll()
+                        .FirstOrDefault(x => string.Equals(GetReferenceId(x), wellboreId, StringComparison.OrdinalIgnoreCase));
+                    AddReferencedResource(hierarchy, storedWellbore, "Well", AclResourceType.Well);
+                }
+                else
+                {
+                    AddReferencedResource(hierarchy, storedObject, "Well", AclResourceType.Well);
+                }
+            }
+            else if (uri != null
+                && string.Equals(uri.ObjectType, "Wellbore", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(uri.Family, "witsml", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(uri.Version, "2.0", StringComparison.OrdinalIgnoreCase))
+            {
+                var storedWellbore = GetObjectForAcl(uri, action, dataObject);
+                AddReferencedResource(hierarchy, storedWellbore, "Well", AclResourceType.Well);
+            }
+
+            authorization.CheckObjectAccess(username, action, hierarchy);
+        }
+
+        /// <summary>
+        /// Checks both the persisted location and requested location of an object.
+        /// This prevents WITSML 2.0 updates from moving data across ACL boundaries
+        /// when the object URI itself does not encode its Wellbore ancestry.
+        /// </summary>
+        private void CheckUpdateAccess(EtpUri uri, object updatedObject)
+        {
+            var username = WitsmlOperationContext.Current.User;
+
+            if (uri != null
+                && string.Equals(uri.Family, "witsml", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(uri.Version, "2.0", StringComparison.OrdinalIgnoreCase))
+            {
+                var existingObject = DataAdapter.Get(uri);
+                if (existingObject != null)
+                    CheckObjectAccess(username, AclAction.Update, uri, existingObject);
+            }
+
+            CheckObjectAccess(username, AclAction.Update, uri, updatedObject);
+        }
+
+        private object GetObjectForAcl(EtpUri uri, AclAction action, object suppliedObject = null)
+        {
+            var context = WitsmlOperationContext.Current;
+            var requestObject = suppliedObject ?? (context == null ? null : context.DataObject);
+
+            if (requestObject != null)
+            {
+                var requestId = GetReferenceId(requestObject);
+                var hasParentReference = GetReference(requestObject, "Wellbore") != null
+                    || GetReference(requestObject, "Well") != null;
+
+                if (string.Equals(requestId, uri.ObjectId, StringComparison.OrdinalIgnoreCase)
+                    && (action == AclAction.Create || hasParentReference))
+                    return requestObject;
+            }
+
+            // A create request may be checked before the parser has materialized
+            // the object. There is no stored object to load at that point; the
+            // definitive check is repeated in Add after parsing and defaulting.
+            if (action == AclAction.Create)
+                return null;
+
+            return DataAdapter.Get(uri);
+        }
+
+        private static void AddReferencedResource(IList<AclResource> hierarchy, object dataObject, string propertyName, AclResourceType resourceType)
+        {
+            var reference = GetReference(dataObject, propertyName);
+            var id = GetReferenceId(reference);
+            if (!string.IsNullOrWhiteSpace(id)
+                && !hierarchy.Any(x => x.Type == resourceType && string.Equals(x.Id, id, StringComparison.OrdinalIgnoreCase)))
+            {
+                hierarchy.Add(new AclResource { Id = id, Type = resourceType });
+            }
+        }
+
+        private static object GetReference(object dataObject, string propertyName)
+        {
+            if (dataObject == null) return null;
+            var property = dataObject.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public);
+            return property == null ? null : property.GetValue(dataObject, null);
+        }
+
+        private static string GetReferenceId(object reference)
+        {
+            if (reference == null) return null;
+            var property = reference.GetType().GetProperty("Uuid", BindingFlags.Instance | BindingFlags.Public)
+                ?? reference.GetType().GetProperty("UUID", BindingFlags.Instance | BindingFlags.Public);
+            var value = property == null ? null : property.GetValue(reference, null);
+            return value == null ? null : value.ToString();
+        }
+
+        /// <summary>Determines whether an object can be included in a readable listing.</summary>
+        /// <param name="uri">The object's URI.</param>
+        /// <param name="dataObject">The object, including any parent references.</param>
+        /// <returns><c>true</c> when the object is readable; otherwise, <c>false</c>.</returns>
+        protected bool IsObjectReadable(EtpUri uri, TObject dataObject)
+        {
+            try
+            {
+                CheckObjectAccess(WitsmlOperationContext.Current.User, AclAction.Read, uri, dataObject);
+                return true;
+            }
+            catch (WitsmlException)
+            {
+                return false;
             }
         }
 
@@ -274,6 +444,8 @@ namespace PDS.WITSMLstudio.Store.Data
 
                 SetDefaultValues(dataObject);
                 var uri = GetUri(dataObject);
+                WitsmlOperationContext.Current.DataObject = dataObject as IDataObject;
+                CheckObjectAccess(AclAction.Create, uri);
                 transaction.SetContext(uri);
                 Logger.DebugFormat("Adding {0} with URI '{1}'", typeof(TObject).Name, uri);
 
@@ -307,6 +479,8 @@ namespace PDS.WITSMLstudio.Store.Data
 
                 UpdateDefaultValues(dataObject, parser);
                 var uri = GetUri(dataObject);
+                WitsmlOperationContext.Current.DataObject = dataObject as IDataObject;
+                CheckUpdateAccess(uri, dataObject);
                 transaction.SetContext(uri);
                 Logger.DebugFormat("Updating {0} with URI '{1}'", typeof(TObject).Name, uri);
 
@@ -340,6 +514,13 @@ namespace PDS.WITSMLstudio.Store.Data
 
                 SetDefaultValues(dataObject);
                 var uri = GetUri(dataObject);
+
+                // Replace can change the Well/Wellbore references of a WITSML 2.0
+                // object. Resolve ACL ancestry from the parsed replacement, not
+                // from the stale object retained in the operation context.
+                WitsmlOperationContext.Current.DataObject = dataObject as IDataObject;
+                CheckUpdateAccess(uri, dataObject);
+
                 transaction.SetContext(uri);
                 Logger.DebugFormat("Replacing {0} with URI '{1}'", typeof(TObject).Name, uri);
 
@@ -372,6 +553,8 @@ namespace PDS.WITSMLstudio.Store.Data
                 var dataObject = Parse(element);
 
                 var uri = GetUri(dataObject);
+                WitsmlOperationContext.Current.DataObject = dataObject as IDataObject;
+                CheckObjectAccess(AclAction.Delete, uri);
                 transaction.SetContext(uri);
                 Logger.DebugFormat("Deleting {0} with URI '{1}'", typeof(TObject).Name, uri);
 

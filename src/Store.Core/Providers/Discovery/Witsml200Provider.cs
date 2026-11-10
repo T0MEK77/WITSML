@@ -29,6 +29,7 @@ using Etp12 = Energistics.Etp.v12;
 using PDS.WITSMLstudio.Framework;
 using PDS.WITSMLstudio.Store.Configuration;
 using PDS.WITSMLstudio.Store.Data;
+using PDS.WITSMLstudio.Store.Data.Security;
 
 namespace PDS.WITSMLstudio.Store.Providers.Discovery
 {
@@ -138,6 +139,18 @@ namespace PDS.WITSMLstudio.Store.Providers.Discovery
             {
                 return;
             }
+
+            // Do not disclose child folders or child counts for an unreadable
+            // object. WITSML 2.0 ancestry is resolved by the typed data provider.
+            if (!string.IsNullOrWhiteSpace(etpUri.ObjectId))
+            {
+                if (!IsObjectReadable(etpUri, null))
+                    return;
+            }
+            else if (!string.IsNullOrWhiteSpace(parentUri.ObjectId) && !IsObjectReadable(parentUri, null))
+            {
+                return;
+            }
             if (etpUri.IsBaseUri)
             {
                 CreateFoldersByObjectType(etpAdapter, etpUri)
@@ -150,13 +163,13 @@ namespace PDS.WITSMLstudio.Store.Providers.Discovery
                 if (!isChannelDataAdapterEnabled && ObjectTypes.ChannelSet.EqualsIgnoreCase(etpUri.ObjectType) && ObjectTypes.Log.EqualsIgnoreCase(parentUri.ObjectType))
                 {
                     var log = _logDataProvider.Get(parentUri);
-                    log?.ChannelSet?.OrderBy(x => x.Citation.Title).ForEach(x => resources.Add(ToResource(etpAdapter, x, parentUri)));
+                    log?.ChannelSet?.Where(x => IsObjectReadable(x.GetUri(parentUri), x)).OrderBy(x => x.Citation.Title).ForEach(x => resources.Add(ToResource(etpAdapter, x, parentUri)));
                     serverSortOrder = _channelSetDataProvider.ServerSortOrder;
                 }
                 else if (!isChannelDataAdapterEnabled && ObjectTypes.Channel.EqualsIgnoreCase(etpUri.ObjectType) && ObjectTypes.ChannelSet.EqualsIgnoreCase(parentUri.ObjectType))
                 {
                     var set = _channelSetDataProvider.Get(parentUri);
-                    set?.Channel?.OrderBy(x => x.Citation.Title).ForEach(x => resources.Add(ToResource(etpAdapter, x, parentUri)));
+                    set?.Channel?.Where(x => IsObjectReadable(x.GetUri(parentUri), x)).OrderBy(x => x.Citation.Title).ForEach(x => resources.Add(ToResource(etpAdapter, x, parentUri)));
                     serverSortOrder = _channelSetDataProvider.ServerSortOrder;
                 }
                 else
@@ -176,7 +189,7 @@ namespace PDS.WITSMLstudio.Store.Providers.Discovery
             else if (ObjectTypes.Log.EqualsIgnoreCase(etpUri.ObjectType))
             {
                 var log = _logDataProvider.Get(etpUri);
-                var hasChildren = log?.ChannelSet?.Count ?? 0;
+                var hasChildren = log?.ChannelSet?.Count(x => IsObjectReadable(x.GetUri(etpUri), x)) ?? 0;
 
                 CreateFoldersByObjectType(etpAdapter, etpUri, "Log", ObjectTypes.ChannelSet, hasChildren)
                     .ForEach(resources.Add);
@@ -184,7 +197,7 @@ namespace PDS.WITSMLstudio.Store.Providers.Discovery
             else if (ObjectTypes.ChannelSet.EqualsIgnoreCase(etpUri.ObjectType))
             {
                 var set = _channelSetDataProvider.Get(etpUri);
-                var hasChildren = set?.Channel?.Count ?? 0;
+                var hasChildren = set?.Channel?.Count(x => IsObjectReadable(x.GetUri(etpUri), x)) ?? 0;
 
                 CreateFoldersByObjectType(etpAdapter, etpUri, "ChannelSet", ObjectTypes.Channel, hasChildren)
                     .ForEach(resources.Add);
@@ -266,6 +279,27 @@ namespace PDS.WITSMLstudio.Store.Providers.Discovery
                     return etpAdapter.NewFolder(uri, x.ContentType, folderName, hasChildren);
                 })
                 .ToList();
+        }
+
+        private bool IsObjectReadable(EtpUri uri, object dataObject)
+        {
+            try
+            {
+                // Inline ChannelSet/Channel objects may not have their own
+                // persisted adapter when the channel data adapter is disabled.
+                // Pass the actual object so WITSML 2.0 Wellbore/Well references
+                // are still included in ACL evaluation during Discovery.
+                GetDataProvider(uri.ObjectType).CheckObjectAccess(
+                    WitsmlOperationContext.Current.User,
+                    AclAction.Read,
+                    uri,
+                    dataObject);
+                return true;
+            }
+            catch (WitsmlException)
+            {
+                return false;
+            }
         }
 
         private IEtpDataProvider GetDataProvider(string objectType)

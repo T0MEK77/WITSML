@@ -19,6 +19,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Principal;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Xml.Linq;
 using Energistics.DataAccess.WITSML141.ComponentSchemas;
@@ -31,6 +33,10 @@ using Energistics.Etp.v11.Datatypes.ChannelData;
 using Energistics.Etp.v11.Protocol.ChannelStreaming;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using PDS.WITSMLstudio.Framework;
+using PDS.WITSMLstudio.Store.Configuration;
+using PDS.WITSMLstudio.Store;
+using PDS.WITSMLstudio.Store.Data.Security;
+using PDS.WITSMLstudio.Compatibility;
 using Shouldly;
 
 namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
@@ -55,6 +61,12 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
             DevKit = new DevKit141Aspect(TestContext);
 
             EtpSetUp(DevKit.Container);
+            // The self-hosted test server bypasses the ASP.NET authentication handshake.
+            // Inject a test principal at the session boundary, matching the production binding.
+            _server.SessionConnected += (sender, session) =>
+                WitsmlOperationContext.SetAuthenticatedUser(
+                    session,
+                    new GenericPrincipal(new GenericIdentity(TestSettings.Username), new string[0]));
             _server.Start();
         }
 
@@ -63,6 +75,214 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
         {
             _server?.Stop();
             EtpCleanUp();
+        }
+
+        [TestMethod]
+        public async Task IChannelStreamingProducer_ChannelDescribe_Denies_Explicit_Read_Deny()
+        {
+            var aclRuleStore = DevKit.Container.Resolve<IAclRuleStore>();
+            var authorizationProvider = DevKit.Container.Resolve<IUserAuthorizationProvider>() as UserAuthorizationProvider;
+            Assert.IsNotNull(authorizationProvider);
+
+            var originalAuthorizationEnabled = WitsmlSettings.IsUserAuthorizationEnabled;
+            var originalAdapters = authorizationProvider.UserAuthorizationAdapters;
+            var username = "*";
+            var denyRule = new AclRule
+            {
+                Username = username,
+                ResourceId = TestUris.LogMd.ObjectId,
+                ResourceType = AclResourceType.DataObject,
+                Action = AclAction.Read,
+                Effect = AclEffect.Deny,
+                Inherit = true
+            };
+
+            try
+            {
+                authorizationProvider.UserAuthorizationAdapters = new List<IUserAuthorizationAdapter>
+                {
+                    new AllowEndpointAuthorizationAdapter()
+                };
+                WitsmlSettings.IsUserAuthorizationEnabled = true;
+                aclRuleStore.Save(denyRule);
+
+                await RequestSessionAndAssert(10, Protocols.ChannelStreaming, Protocols.Discovery, Protocols.Store, Protocols.StoreNotification, Protocols.GrowingObject);
+
+                var handler = _client.Handler<IChannelStreamingConsumer>();
+                var uri = TestUris.LogMd.Append("logCurveInfo", "HKLD").ToString();
+                var onChannelMetadata = HandleMultiPartAsync<ChannelMetadata>(x => handler.OnChannelMetadata += x);
+                handler.Start();
+                handler.ChannelDescribe(new List<string> { uri });
+                var metadata = await onChannelMetadata;
+
+                // A denied channel must not be exposed through ChannelMetadata.
+                Assert.AreEqual(0, metadata.SelectMany(x => x.Message.Channels).Count());
+            }
+            finally
+            {
+                aclRuleStore.Delete(username, TestUris.LogMd.ObjectId, AclResourceType.DataObject, AclAction.Read);
+                WitsmlSettings.IsUserAuthorizationEnabled = originalAuthorizationEnabled;
+                authorizationProvider.UserAuthorizationAdapters = originalAdapters;
+            }
+        }
+
+        [TestMethod]
+        public async Task IChannelStreamingProducer_ChannelStreamingStart_Rechecks_Read_Acl_After_Stream_Start()
+        {
+            var aclRuleStore = DevKit.Container.Resolve<IAclRuleStore>();
+            var authorizationProvider = DevKit.Container.Resolve<IUserAuthorizationProvider>() as UserAuthorizationProvider;
+            Assert.IsNotNull(authorizationProvider);
+
+            var originalAuthorizationEnabled = WitsmlSettings.IsUserAuthorizationEnabled;
+            var originalAdapters = authorizationProvider.UserAuthorizationAdapters;
+            var username = "*";
+            var denyRule = new AclRule
+            {
+                Username = username,
+                ResourceId = TestUris.LogMd.ObjectId,
+                ResourceType = AclResourceType.DataObject,
+                Action = AclAction.Read,
+                Effect = AclEffect.Deny,
+                Inherit = true
+            };
+
+            try
+            {
+                authorizationProvider.UserAuthorizationAdapters = new List<IUserAuthorizationAdapter>
+                {
+                    new AllowEndpointAuthorizationAdapter()
+                };
+                WitsmlSettings.IsUserAuthorizationEnabled = true;
+                // Seed an explicit baseline grant so this test is independent of ACL rules
+                // left by other users/tests in the shared integration database.
+                aclRuleStore.Save(new AclRule
+                {
+                    Username = username,
+                    ResourceId = TestUris.LogMd.ObjectId,
+                    ResourceType = AclResourceType.DataObject,
+                    Action = AclAction.Read,
+                    Effect = AclEffect.Allow,
+                    Inherit = true
+                });
+
+                await RequestSessionAndAssert(10, Protocols.ChannelStreaming, Protocols.Discovery, Protocols.Store, Protocols.StoreNotification, Protocols.GrowingObject);
+
+                var handler = _client.Handler<IChannelStreamingConsumer>();
+                var uri = TestUris.LogMd.Append("logCurveInfo", "HKLD").ToString();
+                var onChannelMetadata = HandleMultiPartAsync<ChannelMetadata>(x => handler.OnChannelMetadata += x);
+                handler.Start();
+                var describeMessageId = handler.ChannelDescribe(new List<string> { uri });
+                var metadata = await onChannelMetadata;
+                var channels = VerifyChannelMetadata(metadata, new List<string> { uri }, describeMessageId);
+                var onChannelData = HandleMultiPartAsync<ChannelData>(x => handler.OnChannelData += x, 1);
+
+                handler.ChannelStreamingStart(new List<ChannelStreamingInfo>
+                {
+                    ToChannelStreamingInfo(channels.Single())
+                });
+
+                var firstData = await onChannelData;
+                Assert.IsNotNull(firstData);
+                Assert.IsTrue(firstData.SelectMany(x => x.Message.Data).Any());
+
+                aclRuleStore.Save(denyRule);
+
+                var additionalData = HandleAsync<ChannelData>(
+                    x => handler.OnChannelData += x,
+                    WitsmlSettings.StreamChannelDataDelayMilliseconds * 3);
+                await Should.ThrowAsync<TimeoutException>(additionalData);
+            }
+            finally
+            {
+                aclRuleStore.Delete(username, TestUris.LogMd.ObjectId, AclResourceType.DataObject, AclAction.Read);
+                WitsmlSettings.IsUserAuthorizationEnabled = originalAuthorizationEnabled;
+                authorizationProvider.UserAuthorizationAdapters = originalAdapters;
+            }
+        }
+
+        [TestMethod]
+        public async Task IChannelStreamingProducer_ChannelRangeRequest_Denies_Read_After_Metadata_Was_Described()
+        {
+            var aclRuleStore = DevKit.Container.Resolve<IAclRuleStore>();
+            var authorizationProvider = DevKit.Container.Resolve<IUserAuthorizationProvider>() as UserAuthorizationProvider;
+            Assert.IsNotNull(authorizationProvider);
+
+            var originalAuthorizationEnabled = WitsmlSettings.IsUserAuthorizationEnabled;
+            var originalAdapters = authorizationProvider.UserAuthorizationAdapters;
+            var username = "*";
+            var denyRule = new AclRule
+            {
+                Username = username,
+                ResourceId = TestUris.LogMd.ObjectId,
+                ResourceType = AclResourceType.DataObject,
+                Action = AclAction.Read,
+                Effect = AclEffect.Deny,
+                Inherit = true
+            };
+
+            try
+            {
+                authorizationProvider.UserAuthorizationAdapters = new List<IUserAuthorizationAdapter>
+                {
+                    new AllowEndpointAuthorizationAdapter()
+                };
+                WitsmlSettings.IsUserAuthorizationEnabled = true;
+                // Seed an explicit baseline grant so this test is independent of ACL rules
+                // left by other users/tests in the shared integration database.
+                aclRuleStore.Save(new AclRule
+                {
+                    Username = username,
+                    ResourceId = TestUris.LogMd.ObjectId,
+                    ResourceType = AclResourceType.DataObject,
+                    Action = AclAction.Read,
+                    Effect = AclEffect.Allow,
+                    Inherit = true
+                });
+
+                await RequestSessionAndAssert(10, Protocols.ChannelStreaming, Protocols.Discovery, Protocols.Store, Protocols.StoreNotification, Protocols.GrowingObject);
+
+                var handler = _client.Handler<IChannelStreamingConsumer>();
+                var uri = TestUris.LogMd.Append("logCurveInfo", "HKLD").ToString();
+                var onChannelMetadata = HandleMultiPartAsync<ChannelMetadata>(x => handler.OnChannelMetadata += x);
+                handler.Start();
+                var describeMessageId = handler.ChannelDescribe(new List<string> { uri });
+                var metadata = await onChannelMetadata;
+                var channel = VerifyChannelMetadata(metadata, new List<string> { uri }, describeMessageId).Single();
+
+                // The client already knows the channel ID, but access is revoked before requesting its data.
+                aclRuleStore.Save(denyRule);
+
+                var onChannelData = HandleAsync<ChannelData>(x => handler.OnChannelData += x);
+                handler.ChannelRangeRequest(new List<ChannelRangeInfo>
+                {
+                    ToChannelRangeInfo(channel, ToScale(channel, 4000.0), ToScale(channel, 4001.0))
+                });
+
+                await Should.ThrowAsync<TimeoutException>(onChannelData);
+            }
+            finally
+            {
+                aclRuleStore.Delete(username, TestUris.LogMd.ObjectId, AclResourceType.DataObject, AclAction.Read);
+                WitsmlSettings.IsUserAuthorizationEnabled = originalAuthorizationEnabled;
+                authorizationProvider.UserAuthorizationAdapters = originalAdapters;
+            }
+        }
+
+        private sealed class AllowEndpointAuthorizationAdapter : IUserAuthorizationAdapter
+        {
+            public bool IsAuthorized(string username, RequestContext request, WitsmlEndpointTypes endpointType)
+            {
+                // The self-hosted ETP test server has no ASP.NET HttpContext.
+                // Establish the authenticated test identity on the server request
+                // thread so object ACL checks do not see the "unknown" placeholder.
+                var principal = new GenericPrincipal(
+                    new GenericIdentity(TestSettings.Username),
+                    new string[0]);
+                Thread.CurrentPrincipal = principal;
+                WitsmlOperationContext.Current.SetAuthenticatedUser(principal);
+
+                return true;
+            }
         }
 
         [TestMethod]

@@ -31,6 +31,7 @@ using PDS.WITSMLstudio.Data.ChangeLogs;
 using PDS.WITSMLstudio.Store.Models;
 using PDS.WITSMLstudio.Store.Data.Transactions;
 using PDS.WITSMLstudio.Store.Data.GrowingObjects;
+using PDS.WITSMLstudio.Store.Data.Security;
 
 namespace PDS.WITSMLstudio.Store.Data
 {
@@ -61,6 +62,7 @@ namespace PDS.WITSMLstudio.Store.Data
             Register3<DbTransaction>();
             Register3<DbGrowingObject>();
             Register3<DbAuditHistory>();
+            Register3<AclRule>();
 
             Register(new TimestampSerializer());
             Register(new XmlElementSerializer());

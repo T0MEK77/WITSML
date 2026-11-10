@@ -27,8 +27,11 @@ using Energistics.Etp.v12.Datatypes;
 using Energistics.Etp.v12.Datatypes.ChannelData;
 using Energistics.Etp.v12.Protocol.ChannelStreaming;
 using PDS.WITSMLstudio.Framework;
+using PDS.WITSMLstudio.Store;
 using PDS.WITSMLstudio.Data.Channels;
+using PDS.WITSMLstudio.Store.Data;
 using PDS.WITSMLstudio.Store.Data.Channels;
+using PDS.WITSMLstudio.Store.Data.Security;
 
 namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
 {
@@ -44,6 +47,7 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
 
         private readonly IContainer _container;
         private readonly IDictionary<EtpUri, ChannelDataBlock> _dataBlocks;
+        private string _streamingUsername;
         private readonly IDictionary<long, EtpUri> _channelParentUris;
         private Timer _flushIntervalTimer;
 
@@ -169,6 +173,7 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
         /// <param name="channelMetadata">The channel metadata.</param>
         protected virtual void EvaluateChannelMetadata(long messageId, ChannelMetadata channelMetadata)
         {
+            _streamingUsername = WitsmlOperationContext.Current.User;
             //var channelsToBeStopped = new List<ChannelMetadataRecord>();
             var channelIndex = new List<int>();
 
@@ -176,6 +181,22 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
             {
                 var channel = channelMetadata.Channels[i];
                 var uri = new EtpUri(channel.ChannelUri);
+
+                // Incoming channel data changes persisted channel values. Require
+                // Update on the channel and its Wellbore/Well ancestors before
+                // accepting metadata for the stream.
+                try
+                {
+                    var dataProvider = _container.Resolve<IEtpDataProvider>(
+                        new ObjectName(uri.ObjectType, uri.Family, uri.Version));
+                    dataProvider.CheckObjectAccess(_streamingUsername, AclAction.Update, uri);
+                }
+                catch (WitsmlException)
+                {
+                    this.InvalidState($"Channel {channel.ChannelName}({channel.ChannelId}) is not authorized for data updates.", messageId);
+                    channelIndex.Add(i);
+                    continue;
+                }
 
                 // Ensure that all parent UIDs are populated
                 foreach (var segment in uri.GetObjectIds())
@@ -327,6 +348,22 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
         /// <param name="dataBlock">The data block.</param>
         protected virtual void ProcessDataBlock(EtpUri uri, ChannelDataBlock dataBlock)
         {
+            // Revalidate immediately before persistence; ACLs may have changed
+            // while the asynchronous channel data block was being buffered.
+            try
+            {
+                _container.Resolve<IEtpDataProvider>(
+                    new ObjectName(uri.ObjectType, uri.Family, uri.Version))
+                    .CheckObjectAccess(_streamingUsername, AclAction.Update, uri);
+            }
+            catch (WitsmlException)
+            {
+                // Timer-driven flushes must discard unauthorized data without
+                // allowing an exception to escape the background timer callback.
+                dataBlock.Clear();
+                return;
+            }
+
             var reader = dataBlock.GetReader();
             dataBlock.Clear();
 

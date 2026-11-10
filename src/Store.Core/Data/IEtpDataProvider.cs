@@ -20,6 +20,7 @@ using System.Collections;
 using System.Collections.Generic;
 using Energistics.Etp.Common.Datatypes;
 using Energistics.Etp.Common.Datatypes.Object;
+using PDS.WITSMLstudio.Store.Data.Security;
 
 namespace PDS.WITSMLstudio.Store.Data
 {
@@ -45,6 +46,15 @@ namespace PDS.WITSMLstudio.Store.Data
         /// <param name="uri">The data object URI.</param>
         /// <returns>true if the data object exists; otherwise, false</returns>
         bool Exists(EtpUri uri);
+
+        /// <summary>Checks object-level ACL for the specified ETP resource.</summary>
+        void CheckObjectAccess(AclAction action, EtpUri uri);
+
+        /// <summary>Checks object-level ACL for an explicitly supplied user.</summary>
+        void CheckObjectAccess(string username, AclAction action, EtpUri uri);
+
+        /// <summary>Checks object ACL using the supplied object for reference resolution.</summary>
+        void CheckObjectAccess(string username, AclAction action, EtpUri uri, object dataObject);
 
         /// <summary>
         /// Gets the count of data objects related to the specified URI.

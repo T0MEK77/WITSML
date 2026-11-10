@@ -18,10 +18,15 @@
 
 using System;
 using System.Linq;
+using System.Collections.Generic;
+using System.Security.Principal;
+using System.Threading;
 using Energistics.DataAccess;
 using Energistics.DataAccess.WITSML141;
+using Energistics.DataAccess.WITSML141.ReferenceData;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using PDS.WITSMLstudio.Store.Configuration;
+using PDS.WITSMLstudio.Store.Data.Security;
 
 namespace PDS.WITSMLstudio.Store
 {
@@ -224,6 +229,295 @@ namespace PDS.WITSMLstudio.Store
 
             Assert.IsNotNull(response);
             Assert.IsNull(response.Result);
+        }
+
+        [TestMethod]
+        public void WitsmlStore141_Soap_CRUD_Enforces_Object_ACL()
+        {
+            var aclRuleStore = _devKit.Container.Resolve<IAclRuleStore>();
+            var authorizationProvider = _devKit.Container.Resolve<IUserAuthorizationProvider>() as UserAuthorizationProvider;
+            Assert.IsNotNull(authorizationProvider);
+
+            var originalAuthorizationEnabled = WitsmlSettings.IsUserAuthorizationEnabled;
+            var originalAdministrators = WitsmlSettings.AclAdministratorUsers;
+            var originalAdapters = authorizationProvider.UserAuthorizationAdapters;
+            var originalPrincipal = Thread.CurrentPrincipal;
+            var username = "acl-soap-" + Guid.NewGuid().ToString("N");
+            var well = new Well
+            {
+                Uid = _devKit.Uid(),
+                Name = _devKit.Name("ACL SOAP Well"),
+                TimeZone = _devKit.TimeZone
+            };
+            var deniedCreateWell = new Well
+            {
+                Uid = _devKit.Uid(),
+                Name = _devKit.Name("ACL SOAP Denied Create"),
+                TimeZone = _devKit.TimeZone
+            };
+            var wellCreated = false;
+
+            try
+            {
+                WitsmlSettings.IsUserAuthorizationEnabled = false;
+                var addResponse = _devKit.Add<WellList, Well>(well);
+                Assert.AreEqual((short)ErrorCodes.Success, addResponse.Result);
+                wellCreated = true;
+
+                Thread.CurrentPrincipal = new GenericPrincipal(new GenericIdentity(username), new string[0]);
+                WitsmlSettings.AclAdministratorUsers = string.Empty;
+                authorizationProvider.UserAuthorizationAdapters = new List<IUserAuthorizationAdapter>
+                {
+                    new AllowSoapAuthorizationAdapter()
+                };
+                WitsmlSettings.IsUserAuthorizationEnabled = true;
+
+                aclRuleStore.Save(new AclRule
+                {
+                    Username = username,
+                    ResourceId = deniedCreateWell.Uid,
+                    ResourceType = AclResourceType.Well,
+                    Action = AclAction.Create,
+                    Effect = AclEffect.Deny
+                });
+
+                var deniedCreateResponse = _devKit.Add<WellList, Well>(deniedCreateWell);
+                Assert.AreEqual((short)ErrorCodes.InsufficientOperationRights, deniedCreateResponse.Result);
+
+                foreach (var action in new[] { AclAction.Read, AclAction.Update, AclAction.Delete })
+                {
+                    aclRuleStore.Save(new AclRule
+                    {
+                        Username = username,
+                        ResourceId = well.Uid,
+                        ResourceType = AclResourceType.Well,
+                        Action = action,
+                        Effect = AclEffect.Deny
+                    });
+                }
+
+                var readResult = _devKit.QueryAndAssert<WellList, Well>(
+                    new Well { Uid = well.Uid },
+                    isNotNull: false);
+                Assert.IsNull(readResult);
+
+                // A matching explicit Allow must permit SOAP reads in the same
+                // configured scope after the explicit Deny has been removed.
+                aclRuleStore.Delete(username, well.Uid, AclResourceType.Well, AclAction.Read);
+                aclRuleStore.Save(new AclRule
+                {
+                    Username = username,
+                    ResourceId = well.Uid,
+                    ResourceType = AclResourceType.Well,
+                    Action = AclAction.Read,
+                    Effect = AclEffect.Allow
+                });
+                var allowedRead = _devKit.QueryAndAssert<WellList, Well>(
+                    new Well { Uid = well.Uid });
+                Assert.IsNotNull(allowedRead);
+
+                var updateResponse = _devKit.Update<WellList, Well>(new Well
+                {
+                    Uid = well.Uid,
+                    Name = well.Name,
+                    TimeZone = well.TimeZone
+                });
+                Assert.AreEqual((short)ErrorCodes.InsufficientOperationRights, updateResponse.Result);
+
+                var deleteResponse = _devKit.Delete<WellList, Well>(new Well { Uid = well.Uid });
+                Assert.AreEqual((short)ErrorCodes.InsufficientOperationRights, deleteResponse.Result);
+            }
+            finally
+            {
+                WitsmlSettings.IsUserAuthorizationEnabled = false;
+
+                foreach (var action in new[] { AclAction.Create, AclAction.Read, AclAction.Update, AclAction.Delete })
+                {
+                    aclRuleStore.Delete(username, well.Uid, AclResourceType.Well, action);
+                    aclRuleStore.Delete(username, deniedCreateWell.Uid, AclResourceType.Well, action);
+                }
+
+                if (wellCreated)
+                    _devKit.Delete<WellList, Well>(new Well { Uid = well.Uid });
+                _devKit.Delete<WellList, Well>(new Well { Uid = deniedCreateWell.Uid });
+
+                WitsmlSettings.IsUserAuthorizationEnabled = originalAuthorizationEnabled;
+                WitsmlSettings.AclAdministratorUsers = originalAdministrators;
+                authorizationProvider.UserAuthorizationAdapters = originalAdapters;
+                Thread.CurrentPrincipal = originalPrincipal;
+            }
+        }
+
+
+        [TestMethod]
+        public void WitsmlStore141_Soap_Enforces_Parent_ACL_Hierarchy()
+        {
+            var aclRuleStore = _devKit.Container.Resolve<IAclRuleStore>();
+            var authorizationProvider = _devKit.Container.Resolve<IUserAuthorizationProvider>() as UserAuthorizationProvider;
+            Assert.IsNotNull(authorizationProvider);
+
+            var originalAuthorizationEnabled = WitsmlSettings.IsUserAuthorizationEnabled;
+            var originalAdministrators = WitsmlSettings.AclAdministratorUsers;
+            var originalAdapters = authorizationProvider.UserAuthorizationAdapters;
+            var originalPrincipal = Thread.CurrentPrincipal;
+            var username = "acl-soap-hierarchy-" + Guid.NewGuid().ToString("N");
+
+            var well = new Well
+            {
+                Uid = _devKit.Uid(),
+                Name = _devKit.Name("ACL Hierarchy Well"),
+                TimeZone = _devKit.TimeZone
+            };
+            var wellbore = new Wellbore
+            {
+                Uid = _devKit.Uid(),
+                Name = _devKit.Name("ACL Hierarchy Wellbore"),
+                UidWell = well.Uid,
+                NameWell = well.Name
+            };
+            var log = new Log
+            {
+                Uid = _devKit.Uid(),
+                Name = _devKit.Name("ACL Hierarchy Log"),
+                UidWell = well.Uid,
+                NameWell = well.Name,
+                UidWellbore = wellbore.Uid,
+                NameWellbore = wellbore.Name
+            };
+            var deniedWellbore = new Wellbore
+            {
+                Uid = _devKit.Uid(),
+                Name = _devKit.Name("ACL Denied Wellbore"),
+                UidWell = well.Uid,
+                NameWell = well.Name
+            };
+            var deniedLog = new Log
+            {
+                Uid = _devKit.Uid(),
+                Name = _devKit.Name("ACL Denied Log"),
+                UidWell = well.Uid,
+                NameWell = well.Name,
+                UidWellbore = wellbore.Uid,
+                NameWellbore = wellbore.Name
+            };
+
+            var wellCreated = false;
+            var wellboreCreated = false;
+            var logCreated = false;
+
+            try
+            {
+                WitsmlSettings.IsUserAuthorizationEnabled = false;
+
+                var wellResponse = _devKit.Add<WellList, Well>(well);
+                Assert.AreEqual((short)ErrorCodes.Success, wellResponse.Result);
+                wellCreated = true;
+
+                var wellboreResponse = _devKit.Add<WellboreList, Wellbore>(wellbore);
+                Assert.AreEqual((short)ErrorCodes.Success, wellboreResponse.Result);
+                wellboreCreated = true;
+
+                _devKit.InitHeader(log, LogIndexType.measureddepth);
+                var logResponse = _devKit.Add<LogList, Log>(log);
+                Assert.AreEqual((short)ErrorCodes.Success, logResponse.Result);
+                logCreated = true;
+
+                Thread.CurrentPrincipal = new GenericPrincipal(new GenericIdentity(username), new string[0]);
+                WitsmlSettings.AclAdministratorUsers = string.Empty;
+                authorizationProvider.UserAuthorizationAdapters = new List<IUserAuthorizationAdapter>
+                {
+                    new AllowSoapAuthorizationAdapter()
+                };
+                WitsmlSettings.IsUserAuthorizationEnabled = true;
+
+                // Create is checked against the immediate parent, even without inheritance.
+                aclRuleStore.Save(new AclRule
+                {
+                    Username = username,
+                    ResourceId = well.Uid,
+                    ResourceType = AclResourceType.Well,
+                    Action = AclAction.Create,
+                    Effect = AclEffect.Deny,
+                    Inherit = false
+                });
+                var deniedWellboreResponse = _devKit.Add<WellboreList, Wellbore>(deniedWellbore);
+                Assert.AreEqual((short)ErrorCodes.InsufficientOperationRights, deniedWellboreResponse.Result);
+                aclRuleStore.Delete(username, well.Uid, AclResourceType.Well, AclAction.Create);
+
+                aclRuleStore.Save(new AclRule
+                {
+                    Username = username,
+                    ResourceId = wellbore.Uid,
+                    ResourceType = AclResourceType.Wellbore,
+                    Action = AclAction.Create,
+                    Effect = AclEffect.Deny,
+                    Inherit = false
+                });
+                var deniedLogResponse = _devKit.Add<LogList, Log>(deniedLog);
+                Assert.AreEqual((short)ErrorCodes.InsufficientOperationRights, deniedLogResponse.Result);
+                aclRuleStore.Delete(username, wellbore.Uid, AclResourceType.Wellbore, AclAction.Create);
+
+                // A Well-level Read Deny must flow through Wellbore to the Log data object.
+                aclRuleStore.Save(new AclRule
+                {
+                    Username = username,
+                    ResourceId = well.Uid,
+                    ResourceType = AclResourceType.Well,
+                    Action = AclAction.Read,
+                    Effect = AclEffect.Deny,
+                    Inherit = true
+                });
+                var wellDeniedRead = _devKit.QueryAndAssert<LogList, Log>(
+                    new Log { Uid = log.Uid, UidWell = well.Uid, UidWellbore = wellbore.Uid },
+                    isNotNull: false);
+                Assert.IsNull(wellDeniedRead);
+                aclRuleStore.Delete(username, well.Uid, AclResourceType.Well, AclAction.Read);
+
+                // A Wellbore-level Read Deny must flow through to its Log data object.
+                aclRuleStore.Save(new AclRule
+                {
+                    Username = username,
+                    ResourceId = wellbore.Uid,
+                    ResourceType = AclResourceType.Wellbore,
+                    Action = AclAction.Read,
+                    Effect = AclEffect.Deny,
+                    Inherit = true
+                });
+                var wellboreDeniedRead = _devKit.QueryAndAssert<LogList, Log>(
+                    new Log { Uid = log.Uid, UidWell = well.Uid, UidWellbore = wellbore.Uid },
+                    isNotNull: false);
+                Assert.IsNull(wellboreDeniedRead);
+            }
+            finally
+            {
+                WitsmlSettings.IsUserAuthorizationEnabled = false;
+
+                foreach (var action in new[] { AclAction.Create, AclAction.Read })
+                {
+                    aclRuleStore.Delete(username, well.Uid, AclResourceType.Well, action);
+                    aclRuleStore.Delete(username, wellbore.Uid, AclResourceType.Wellbore, action);
+                }
+
+                if (logCreated)
+                    _devKit.Delete<LogList, Log>(new Log { Uid = log.Uid, UidWell = well.Uid, UidWellbore = wellbore.Uid });
+                if (wellboreCreated)
+                    _devKit.Delete<WellboreList, Wellbore>(new Wellbore { Uid = wellbore.Uid, UidWell = well.Uid });
+                if (wellCreated)
+                    _devKit.Delete<WellList, Well>(new Well { Uid = well.Uid });
+
+                WitsmlSettings.IsUserAuthorizationEnabled = originalAuthorizationEnabled;
+                WitsmlSettings.AclAdministratorUsers = originalAdministrators;
+                authorizationProvider.UserAuthorizationAdapters = originalAdapters;
+                Thread.CurrentPrincipal = originalPrincipal;
+            }
+        }
+
+        private sealed class AllowSoapAuthorizationAdapter : IUserAuthorizationAdapter
+        {
+            public bool IsAuthorized(string username, RequestContext request, WitsmlEndpointTypes endpointType)
+            {
+                return true;
+            }
         }
     }
 }

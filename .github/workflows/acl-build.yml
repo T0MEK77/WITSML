@@ -1,0 +1,184 @@
+name: ACL build and tests
+
+on:
+  push:
+    branches:
+      - feature/user-data-permissions
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: acl-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-2022
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Setup NuGet
+        uses: NuGet/setup-nuget@v2
+
+      - name: Install .NET Framework reference assemblies
+        shell: pwsh
+        run: |
+          nuget install Microsoft.NETFramework.ReferenceAssemblies.net40 -Version 1.0.3 -OutputDirectory packages
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          nuget install Microsoft.NETFramework.ReferenceAssemblies.net452 -Version 1.0.3 -OutputDirectory packages
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $referenceRoot = Join-Path (Get-Location) "packages/ReferenceAssemblies/.NETFramework"
+          New-Item -ItemType Directory -Force -Path $referenceRoot | Out-Null
+          Copy-Item "packages/Microsoft.NETFramework.ReferenceAssemblies.net40.1.0.3/build/.NETFramework/v4.0" $referenceRoot -Recurse -Force
+          Copy-Item "packages/Microsoft.NETFramework.ReferenceAssemblies.net452.1.0.3/build/.NETFramework/v4.5.2" $referenceRoot -Recurse -Force
+
+      - name: Restore NuGet packages
+        run: nuget restore src/PDS.WITSMLstudio.sln
+
+      - name: Build solution (.NET Framework 4.5.2)
+        shell: pwsh
+        run: |
+          $referenceRoot = Resolve-Path "packages/ReferenceAssemblies"
+          msbuild src/PDS.WITSMLstudio.sln /m /p:Configuration=Release /p:Platform="Any CPU" /p:TargetFrameworkRootPath="$referenceRoot" /p:RunCodeAnalysis=false /verbosity:minimal
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Start MongoDB for ACL persistence tests
+        shell: pwsh
+        run: |
+          $mongoArchive = Join-Path $env:RUNNER_TEMP "mongodb.zip"
+          $mongoRoot = Join-Path $env:RUNNER_TEMP "mongodb"
+          $mongoData = Join-Path $env:RUNNER_TEMP "mongodb-data"
+          New-Item -ItemType Directory -Force -Path $mongoRoot, $mongoData | Out-Null
+          Invoke-WebRequest -Uri "https://fastdl.mongodb.org/windows/mongodb-windows-x86_64-4.4.29.zip" -OutFile $mongoArchive
+          Expand-Archive -Path $mongoArchive -DestinationPath $mongoRoot -Force
+          $mongod = Get-ChildItem $mongoRoot -Filter mongod.exe -Recurse | Select-Object -First 1
+          if ($null -eq $mongod) {
+            throw "mongod.exe was not found in the downloaded MongoDB archive."
+          }
+          $mongoLog = Join-Path $env:RUNNER_TEMP "mongod.log"
+          $mongoProcess = Start-Process -FilePath $mongod.FullName -ArgumentList @("--dbpath", $mongoData, "--bind_ip", "127.0.0.1", "--port", "27017", "--logpath", $mongoLog) -PassThru
+          $ready = $false
+          for ($attempt = 0; $attempt -lt 60; $attempt++) {
+            if ($mongoProcess.HasExited) {
+              Get-Content $mongoLog -ErrorAction SilentlyContinue
+              throw "MongoDB exited before becoming ready."
+            }
+            $client = New-Object System.Net.Sockets.TcpClient
+            try {
+              $client.Connect("127.0.0.1", 27017)
+              $ready = $true
+              break
+            }
+            catch {
+              Start-Sleep -Seconds 2
+            }
+            finally {
+              $client.Dispose()
+            }
+          }
+          if (!$ready) {
+            Get-Content $mongoLog -ErrorAction SilentlyContinue
+            throw "MongoDB did not become ready within 120 seconds."
+          }
+
+      - name: Run MongoDB ACL persistence tests
+        shell: pwsh
+        run: |
+          $testAssembly = "src/Store.MongoDb.IntegrationTest/bin/Release/PDS.WITSMLstudio.Store.MongoDb.IntegrationTest.dll"
+          if (!(Test-Path $testAssembly)) {
+            throw "MongoDB integration test assembly not found: $testAssembly"
+          }
+          $vswhere = Get-ChildItem "${env:ProgramFiles(x86)}\\Microsoft Visual Studio\\Installer" -Filter vswhere.exe -Recurse | Select-Object -First 1
+          if ($null -eq $vswhere) {
+            throw "vswhere.exe was not found."
+          }
+          $installPath = & $vswhere.FullName -latest -products '*' -property installationPath
+          $runner = Join-Path $installPath "Common7\\IDE\\CommonExtensions\\Microsoft\\TestWindow\\vstest.console.exe"
+          if (!(Test-Path $runner)) {
+            throw "VSTest runner not found: $runner"
+          }
+          & $runner $testAssembly /Settings:src/External/test.runsettings /TestCaseFilter:"FullyQualifiedName~AclRuleStoreTests"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run core unit tests
+        shell: pwsh
+        run: |
+          $testAssembly = "src/Core.UnitTest/bin/Release/PDS.WITSMLstudio.UnitTest.dll"
+          if (!(Test-Path $testAssembly)) {
+            throw "Core unit test assembly not found: $testAssembly"
+          }
+          $vswhere = Get-ChildItem "${env:ProgramFiles(x86)}\\Microsoft Visual Studio\\Installer" -Filter vswhere.exe -Recurse | Select-Object -First 1
+          if ($null -eq $vswhere) {
+            throw "vswhere.exe was not found."
+          }
+          $installPath = & $vswhere.FullName -latest -products '*' -property installationPath
+          $runner = Join-Path $installPath "Common7\\IDE\\CommonExtensions\\Microsoft\\TestWindow\\vstest.console.exe"
+          if (!(Test-Path $runner)) {
+            throw "VSTest runner not found: $runner"
+          }
+          & $runner $testAssembly
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run ACL policy and SOAP ACL integration tests
+        shell: pwsh
+        run: |
+          $testAssembly = "src/Store.IntegrationTest/bin/Release/PDS.WITSMLstudio.Store.IntegrationTest.dll"
+          if (!(Test-Path $testAssembly)) {
+            throw "Store integration test assembly not found: $testAssembly"
+          }
+          $vswhere = Get-ChildItem "${env:ProgramFiles(x86)}\\Microsoft Visual Studio\\Installer" -Filter vswhere.exe -Recurse | Select-Object -First 1
+          if ($null -eq $vswhere) {
+            throw "vswhere.exe was not found."
+          }
+          $installPath = & $vswhere.FullName -latest -products '*' -property installationPath
+          $runner = Join-Path $installPath "Common7\\IDE\\CommonExtensions\\Microsoft\\TestWindow\\vstest.console.exe"
+          if (!(Test-Path $runner)) {
+            throw "VSTest runner not found: $runner"
+          }
+          & $runner $testAssembly /TestCaseFilter:"FullyQualifiedName~AclPolicyTests|FullyQualifiedName~WitsmlStore141_Soap_CRUD_Enforces_Object_ACL|FullyQualifiedName~WitsmlStore141_Soap_Enforces_Parent_ACL_Hierarchy"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run ETP GrowingObject and Store Notification ACL integration tests
+        shell: pwsh
+        run: |
+          $testAssembly = "src/Store.IntegrationTest/bin/Release/PDS.WITSMLstudio.Store.IntegrationTest.dll"
+          if (!(Test-Path $testAssembly)) {
+            throw "Store integration test assembly not found: $testAssembly"
+          }
+          $vswhere = Get-ChildItem "${env:ProgramFiles(x86)}\\Microsoft Visual Studio\\Installer" -Filter vswhere.exe -Recurse | Select-Object -First 1
+          if ($null -eq $vswhere) {
+            throw "vswhere.exe was not found."
+          }
+          $installPath = & $vswhere.FullName -latest -products '*' -property installationPath
+          $runner = Join-Path $installPath "Common7\\IDE\\CommonExtensions\\Microsoft\\TestWindow\\vstest.console.exe"
+          if (!(Test-Path $runner)) {
+            throw "VSTest runner not found: $runner"
+          }
+          & $runner $testAssembly /TestCaseFilter:"FullyQualifiedName~Log131_GrowingObjectGet_Denies_Explicit_Read_Deny|FullyQualifiedName~Log131_GrowingObjectGetRange_Denies_Explicit_Read_Deny|FullyQualifiedName~Log131_GrowingObjectPut_Denies_Explicit_Update_Deny|FullyQualifiedName~Log131_GrowingObjectDelete_Denies_Explicit_Delete_Deny|FullyQualifiedName~Log131_GrowingObjectDeleteRange_Denies_Explicit_Delete_Deny|FullyQualifiedName~Log131_GrowingObjectGet_Rechecks_Read_Acl_After_Session_Start|FullyQualifiedName~Log131_Etp12GetPart_Rechecks_Read_Acl_After_Session_Start|FullyQualifiedName~Log131_Etp11StoreNotification_Denies_Subscription_With_Explicit_Read_Deny|FullyQualifiedName~Log131_Etp12StoreNotification_Denies_Subscription_With_Explicit_Read_Deny|FullyQualifiedName~Log131_Etp11StoreNotification_Prevents_Other_User_From_Canceling_Subscription|FullyQualifiedName~Log131_Etp12StoreNotification_Prevents_Other_User_From_Unsubscribing|FullyQualifiedName~Log131_Etp12GetPart_Denies_Explicit_Read_Deny|FullyQualifiedName~Log131_Etp12GetPartsByRange_Denies_Explicit_Read_Deny|FullyQualifiedName~Log131_Etp12PutPart_Denies_Explicit_Update_Deny|FullyQualifiedName~Log131_Etp12DeletePart_Denies_Explicit_Delete_Deny|FullyQualifiedName~Log131_Etp12DeletePartsByRange_Denies_Explicit_Delete_Deny"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run ETP channel streaming ACL integration tests
+        shell: pwsh
+        run: |
+          $testAssembly = "src/Store.IntegrationTest/bin/Release/PDS.WITSMLstudio.Store.IntegrationTest.dll"
+          if (!(Test-Path $testAssembly)) {
+            throw "Store integration test assembly not found: $testAssembly"
+          }
+          $vswhere = Get-ChildItem "${env:ProgramFiles(x86)}\\Microsoft Visual Studio\\Installer" -Filter vswhere.exe -Recurse | Select-Object -First 1
+          if ($null -eq $vswhere) {
+            throw "vswhere.exe was not found."
+          }
+          $installPath = & $vswhere.FullName -latest -products '*' -property installationPath
+          $runner = Join-Path $installPath "Common7\\IDE\\CommonExtensions\\Microsoft\\TestWindow\\vstest.console.exe"
+          if (!(Test-Path $runner)) {
+            throw "VSTest runner not found: $runner"
+          }
+          & $runner $testAssembly /TestCaseFilter:"FullyQualifiedName~IChannelStreamingProducer_ChannelDescribe_Denies_Explicit_Read_Deny|FullyQualifiedName~IChannelStreamingProducer_ChannelStreamingStart_Rechecks_Read_Acl_After_Stream_Start|FullyQualifiedName~IChannelStreamingProducer_ChannelRangeRequest_Denies_Read_After_Metadata_Was_Described"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

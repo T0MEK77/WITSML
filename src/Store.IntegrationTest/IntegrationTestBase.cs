@@ -37,6 +37,7 @@ using Energistics.Etp.v11.Protocol.ChannelStreaming;
 using Energistics.Etp.v11.Protocol.Core;
 using Energistics.Etp.v11.Protocol.Discovery;
 using Energistics.Etp.v11.Protocol.Store;
+using Energistics.Etp.v11.Protocol.StoreNotification;
 using log4net;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using PDS.WITSMLstudio.Framework;
@@ -51,6 +52,7 @@ namespace PDS.WITSMLstudio.Store
         private IContainer _container;
         protected IEtpSelfHostedWebServer _server;
         protected IEtpClient _client;
+        protected string _etpServerUrl;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="IntegrationTestBase"/> class.
@@ -93,20 +95,39 @@ namespace PDS.WITSMLstudio.Store
             // Update EtpServerUrl setting
             var uri = new Uri(TestSettings.EtpServerUrl);
             var url = TestSettings.EtpServerUrl.Replace($":{uri.Port}", $":{port}");
+            _etpServerUrl = url;
 
-            // Create server and client instances
+            // Create server and client instances for the explicitly selected test protocol.
+            var isEtp12 = string.Equals(TestSettings.EtpVersion, "1.2", StringComparison.Ordinal);
+            Logger.Info($"Configuring ETP test server. Version: {TestSettings.EtpVersion}; username configured: {!string.IsNullOrWhiteSpace(TestSettings.Username)}");
             _server = CreateServer(port);
             _client = InitClient(CreateClient(url));
+            var expectedEtpVersion = isEtp12 ? EtpVersion.v12 : EtpVersion.v11;
+            if (_client.SupportedVersion != expectedEtpVersion)
+            {
+                throw new InvalidOperationException($"ETP client version mismatch. Expected: {expectedEtpVersion}; actual: {_client.SupportedVersion}.");
+            }
+            Logger.Info($"ETP client adapter version verified: {_client.SupportedVersion}.");
 
-            // Resolve dependencies early to avoid object disposed
-            var streaming = container.Resolve<IChannelStreamingProducer>();
-            var discovery = container.Resolve<IDiscoveryStore>();
-            var store = container.Resolve<IStoreStore>();
-
-            // Register server handlers
-            _server.Register(() => streaming);
-            _server.Register(() => discovery);
-            _server.Register(() => store);
+            // Register factories that resolve a fresh NonShared provider for each
+            // ETP session. Returning a provider captured here would reuse its Session
+            // property and per-session state across different authenticated clients.
+            if (isEtp12)
+            {
+                _server.Register(() => container.Resolve<Energistics.Etp.v12.Protocol.ChannelStreaming.IChannelStreamingProducer>());
+                _server.Register(() => container.Resolve<Energistics.Etp.v12.Protocol.Discovery.IDiscoveryStore>());
+                _server.Register(() => container.Resolve<Energistics.Etp.v12.Protocol.Store.IStoreStore>());
+                _server.Register(() => container.Resolve<Energistics.Etp.v12.Protocol.GrowingObject.IGrowingObjectStore>());
+                _server.Register(() => container.Resolve<Energistics.Etp.v12.Protocol.StoreNotification.IStoreNotificationStore>());
+            }
+            else
+            {
+                _server.Register(() => container.Resolve<Energistics.Etp.v11.Protocol.ChannelStreaming.IChannelStreamingProducer>());
+                _server.Register(() => container.Resolve<Energistics.Etp.v11.Protocol.Discovery.IDiscoveryStore>());
+                _server.Register(() => container.Resolve<Energistics.Etp.v11.Protocol.Store.IStoreStore>());
+                _server.Register(() => container.Resolve<Energistics.Etp.v11.Protocol.GrowingObject.IGrowingObjectStore>());
+                _server.Register(() => container.Resolve<Energistics.Etp.v11.Protocol.StoreNotification.IStoreNotificationStore>());
+            }
         }
 
         /// <summary>
@@ -118,6 +139,7 @@ namespace PDS.WITSMLstudio.Store
             _server?.Dispose();
             _client = null;
             _server = null;
+            _etpServerUrl = null;
 
             TestSettings.Reset();
         }
@@ -130,7 +152,7 @@ namespace PDS.WITSMLstudio.Store
         protected IEtpSelfHostedWebServer CreateServer(int port)
         {
             var version = GetType().Assembly.GetName().Version.ToString();
-            var server = EtpFactory.CreateSelfHostedWebServer(port, GetType().AssemblyQualifiedName, version);
+            var server = EtpFactory.CreateSelfHostedWebServer(WebSocketType.WebSocket4Net, port, GetType().AssemblyQualifiedName, version);
             
             return server;
         }
@@ -143,13 +165,21 @@ namespace PDS.WITSMLstudio.Store
         /// <returns>A new <see cref="IEtpClient"/> instance.</returns>
         protected IEtpClient CreateClient(string url)
         {
-            var version = GetType().Assembly.GetName().Version.ToString();
-            var headers = Energistics.Etp.Security.Authorization.Basic(TestSettings.Username, TestSettings.Password);
-            var etpSubProtocol = EtpSettings.Etp11SubProtocol;
+            return CreateClient(url, TestSettings.Username, TestSettings.Password);
+        }
 
-            var client = EtpFactory.CreateClient(url ?? TestSettings.EtpServerUrl, GetType().AssemblyQualifiedName, version, etpSubProtocol, headers);
-            
-            return client;
+        /// <summary>
+        /// Creates an ETP client using explicit credentials.
+        /// </summary>
+        protected IEtpClient CreateClient(string url, string username, string password)
+        {
+            var version = GetType().Assembly.GetName().Version.ToString();
+            var headers = Energistics.Etp.Security.Authorization.Basic(username, password);
+            var etpSubProtocol = string.Equals(TestSettings.EtpVersion, "1.2", StringComparison.Ordinal)
+                ? EtpSettings.Etp12SubProtocol
+                : EtpSettings.Etp11SubProtocol;
+
+            return EtpFactory.CreateClient(url ?? TestSettings.EtpServerUrl, GetType().AssemblyQualifiedName, version, etpSubProtocol, headers);
         }
 
         /// <summary>
@@ -159,10 +189,25 @@ namespace PDS.WITSMLstudio.Store
         /// <returns>The ETP client.</returns>
         protected IEtpClient InitClient(IEtpClient client)
         {
-            // Register client handlers
-            client.Register<IChannelStreamingConsumer, ChannelStreamingConsumerHandler>();
-            client.Register<IDiscoveryCustomer, DiscoveryCustomerHandler>();
-            client.Register<IStoreCustomer, StoreCustomerHandler>();
+            // Register only handlers for the negotiated ETP version. ETP 1.1 and
+            // 1.2 reuse protocol numbers; registering both versions leaves the
+            // last handler in the session's protocol-number lookup table.
+            if (string.Equals(TestSettings.EtpVersion, "1.2", StringComparison.Ordinal))
+            {
+                client.Register<Energistics.Etp.v12.Protocol.ChannelStreaming.IChannelStreamingConsumer, Energistics.Etp.v12.Protocol.ChannelStreaming.ChannelStreamingConsumerHandler>();
+                client.Register<Energistics.Etp.v12.Protocol.Discovery.IDiscoveryCustomer, Energistics.Etp.v12.Protocol.Discovery.DiscoveryCustomerHandler>();
+                client.Register<Energistics.Etp.v12.Protocol.Store.IStoreCustomer, Energistics.Etp.v12.Protocol.Store.StoreCustomerHandler>();
+                client.Register<Energistics.Etp.v12.Protocol.GrowingObject.IGrowingObjectCustomer, Energistics.Etp.v12.Protocol.GrowingObject.GrowingObjectCustomerHandler>();
+                client.Register<Energistics.Etp.v12.Protocol.StoreNotification.IStoreNotificationCustomer, Energistics.Etp.v12.Protocol.StoreNotification.StoreNotificationCustomerHandler>();
+            }
+            else
+            {
+                client.Register<IChannelStreamingConsumer, ChannelStreamingConsumerHandler>();
+                client.Register<IDiscoveryCustomer, DiscoveryCustomerHandler>();
+                client.Register<IStoreCustomer, StoreCustomerHandler>();
+                client.Register<Energistics.Etp.v11.Protocol.GrowingObject.IGrowingObjectCustomer, PDS.WITSMLstudio.Store.Data.Logs.AclGrowingObjectCustomerHandler>();
+                client.Register<Energistics.Etp.v11.Protocol.StoreNotification.IStoreNotificationCustomer, Energistics.Etp.v11.Protocol.StoreNotification.StoreNotificationCustomerHandler>();
+            }
 
             return client;
         }
@@ -350,7 +395,12 @@ namespace PDS.WITSMLstudio.Store
         /// </summary>
         /// <param name="retries">The number of retries.</param>
         /// <returns>The <see cref="OpenSession" /> message args.</returns>
-        protected async Task<ProtocolEventArgs<OpenSession>> RequestSessionAndAssert(int retries = 10)
+        protected Task<ProtocolEventArgs<OpenSession>> RequestSessionAndAssert(int retries = 10)
+        {
+            return RequestSessionAndAssert(retries, Protocols.ChannelStreaming, Protocols.Discovery, Protocols.Store);
+        }
+
+        protected async Task<ProtocolEventArgs<OpenSession>> RequestSessionAndAssert(int retries, params Protocols[] requestedProtocols)
         {
             try
             {
@@ -368,7 +418,7 @@ namespace PDS.WITSMLstudio.Store
                 var openArgs = await onOpenSession;
 
                 // Verify OpenSession and Supported Protocols
-                VerifySessionWithProtcols(openArgs, Protocols.ChannelStreaming, Protocols.Discovery, Protocols.Store);
+                VerifySessionWithProtcols(openArgs, requestedProtocols);
 
                 return openArgs;
             }
@@ -390,7 +440,7 @@ namespace PDS.WITSMLstudio.Store
                     _server.Start();
                 }
 
-                return await RequestSessionAndAssert(retries - 1);
+                return await RequestSessionAndAssert(retries - 1, requestedProtocols);
             }
         }
 

@@ -30,9 +30,12 @@ using Energistics.Etp.v11.Datatypes.ChannelData;
 using Energistics.Etp.v11.Protocol.ChannelStreaming;
 using PDS.WITSMLstudio.Data;
 using PDS.WITSMLstudio.Framework;
+using PDS.WITSMLstudio.Store;
+using PDS.WITSMLstudio.Store.Data;
 using PDS.WITSMLstudio.Data.Channels;
 using PDS.WITSMLstudio.Store.Configuration;
 using PDS.WITSMLstudio.Store.Data.Channels;
+using PDS.WITSMLstudio.Store.Data.Security;
 
 namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
 {
@@ -45,6 +48,7 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
     public class ChannelStreaming11Producer : ChannelStreamingProducerHandler, IStreamingProducer
     {
         private CancellationTokenSource _tokenSource;
+        private string _streamingUsername;
         private readonly List<IList<ChannelStreamingContext>> _channelStreamingContextLists;
         private readonly Dictionary<string, List<IChannelDataProvider>> _providers;
 
@@ -218,7 +222,9 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
                 var providers = _providers[family.Key];
                 foreach (var provider in providers)
                 {
-                    var metadata = provider.GetChannelMetadata(Session.Adapter, family.ToArray());
+                    var metadata = provider.GetChannelMetadata(Session.Adapter, family.ToArray())
+                        .Where(IsChannelMetadataReadable)
+                        .ToList();
 
                     metadata.ForEach(m =>
                     {
@@ -255,6 +261,8 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
         /// <param name="channelStreamingStart">The channel streaming start.</param>
         protected override void HandleChannelStreamingStart(IMessageHeader header, ChannelStreamingStart channelStreamingStart)
         {
+            _streamingUsername = WitsmlOperationContext.GetAuthenticatedUser(Session);
+
             // no action needed if streaming already started
             //if (_tokenSource != null)
             //    return;
@@ -278,6 +286,8 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
         /// <param name="channelRangeRequest">The channel range request.</param>
         protected override void HandleChannelRangeRequest(IMessageHeader header, ChannelRangeRequest channelRangeRequest)
         {
+            _streamingUsername = WitsmlOperationContext.Current.User;
+
             base.HandleChannelRangeRequest(header, channelRangeRequest);
 
             Request = header;
@@ -515,6 +525,8 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
         /// <returns></returns>
         protected virtual async Task StreamChannelData(IList<ChannelStreamingContext> contextList, CancellationToken token)
         {
+            AuthorizeStreamingContexts(contextList, _streamingUsername);
+
             _channelStreamingContextLists.Add(contextList);
 
             // These values can be set outside of our processing loop as the won't chnage
@@ -537,6 +549,7 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
             // Loop until there is a cancellation or all channals have been removed
             while (!IsStreamingStopped(contextList, ref token))
             {
+                AuthorizeStreamingContexts(contextList, _streamingUsername);
                 firstStart = !firstStart.HasValue;
 
                 var channelIds = contextList.Select(i => i.ChannelId).Distinct().ToArray();
@@ -613,6 +626,60 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
             }
         }
 
+        private bool IsChannelMetadataReadable(IChannelMetadataRecord metadata)
+        {
+            if (!WitsmlSettings.IsUserAuthorizationEnabled)
+                return true;
+
+            if (metadata == null || string.IsNullOrWhiteSpace(metadata.ChannelUri))
+                return false;
+
+            var channelUri = new EtpUri(metadata.ChannelUri);
+
+            try
+            {
+                ResolveChannelDataProvider(channelUri)
+                    .CheckObjectAccess(WitsmlOperationContext.GetAuthenticatedUser(Session), AclAction.Read, channelUri);
+                return true;
+            }
+            catch (WitsmlException)
+            {
+                return false;
+            }
+        }
+
+        private IEtpDataProvider ResolveChannelDataProvider(EtpUri channelUri)
+        {
+            var provider = Container.TryResolve<IEtpDataProvider>(
+                new ObjectName(channelUri.ObjectType, channelUri.Family, channelUri.Version));
+
+            if (provider != null)
+                return provider;
+
+            var providerUri = channelUri.Parent;
+            if (string.IsNullOrWhiteSpace(providerUri.ObjectId))
+                providerUri = channelUri;
+
+            return Container.Resolve<IEtpDataProvider>(
+                new ObjectName(providerUri.ObjectType, providerUri.Family, providerUri.Version));
+        }
+
+        private void AuthorizeStreamingContexts(IEnumerable<ChannelStreamingContext> contextList, string username)
+        {
+            foreach (var context in contextList)
+            {
+                var channelUri = !string.IsNullOrWhiteSpace(context.ChannelMetadata.ChannelUri)
+                    ? new EtpUri(context.ChannelMetadata.ChannelUri)
+                    : context.ParentUri;
+
+                if (channelUri == null)
+                    throw new WitsmlException(ErrorCodes.InsufficientOperationRights);
+
+                ResolveChannelDataProvider(channelUri)
+                    .CheckObjectAccess(username, AclAction.Read, channelUri);
+            }
+        }
+
         /// <summary>
         /// Streams the channel data.
         /// </summary>
@@ -648,6 +715,7 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
                         // If our data list has reached the maximum size, then send it.
                         if (dataItemList.Count >= MaxDataItems)
                         {
+                            AuthorizeStreamingContexts(contextList, _streamingUsername);
                             await SendChannelData(dataItemList);
                             dataItemList.Clear();
                         }
@@ -667,6 +735,7 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
                 // Send any remaining channel data that has not been streamed.
                 if (dataItemList.Any())
                 {
+                    AuthorizeStreamingContexts(contextList, _streamingUsername);
                     await SendChannelData(dataItemList);
                 }
             }

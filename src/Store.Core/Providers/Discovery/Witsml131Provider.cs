@@ -31,6 +31,7 @@ using Etp12 = Energistics.Etp.v12;
 using PDS.WITSMLstudio.Framework;
 using PDS.WITSMLstudio.Store.Configuration;
 using PDS.WITSMLstudio.Store.Data;
+using PDS.WITSMLstudio.Store.Data.Security;
 
 namespace PDS.WITSMLstudio.Store.Providers.Discovery
 {
@@ -140,6 +141,18 @@ namespace PDS.WITSMLstudio.Store.Providers.Discovery
             {
                 return;
             }
+
+            // Discovery must not reveal child folders or counts beneath an
+            // unreadable parent, even when the request only asks for metadata.
+            if (!string.IsNullOrWhiteSpace(etpUri.ObjectId))
+            {
+                if (!IsObjectReadable(etpUri))
+                    return;
+            }
+            else if (!string.IsNullOrWhiteSpace(parentUri.ObjectId) && !IsObjectReadable(parentUri))
+            {
+                return;
+            }
             if (etpUri.IsBaseUri || (string.IsNullOrWhiteSpace(etpUri.ObjectId) && ObjectTypes.Well.EqualsIgnoreCase(etpUri.ObjectType)))
             {
                 _wellDataProvider.GetAll(etpUri)
@@ -176,7 +189,7 @@ namespace PDS.WITSMLstudio.Store.Providers.Discovery
                 foreach (var adapter in GetWellboreDataAdapters())
                 {
                     var type = EtpContentTypes.GetContentType(adapter.DataObjectType);
-                    var count = adapter.Count(etpUri);
+                    var count = GetAuthorizedCount(adapter, etpUri);
                     resources.Add(etpAdapter.NewFolder(etpUri, type, type.ObjectType, count));
                 }
             }
@@ -186,6 +199,42 @@ namespace PDS.WITSMLstudio.Store.Providers.Discovery
                 log?.LogCurveInfo?.ForEach(x => resources.Add(ToResource(etpAdapter, log, x)));
                 serverSortOrder = string.Empty;
             }
+        }
+
+        private bool IsObjectReadable(EtpUri uri)
+        {
+            try
+            {
+                var provider = _container.Resolve<IEtpDataProvider>(
+                    new ObjectName(uri.ObjectType, uri.Family, uri.Version));
+                return provider.Exists(uri);
+            }
+            catch (WitsmlException)
+            {
+                return false;
+            }
+        }
+
+        private int GetAuthorizedCount(IWitsmlDataAdapter adapter, EtpUri parentUri)
+        {
+            var authorization = _container.Resolve<IUserAuthorizationProvider>();
+
+            return adapter.GetAll(parentUri)
+                .Cast<object>()
+                .Count(item =>
+                {
+                    try
+                    {
+                        authorization.CheckObjectAccess(
+                            AclAction.Read,
+                            AclResourceHierarchy.FromUri(adapter.GetUri(item)));
+                        return true;
+                    }
+                    catch (WitsmlException)
+                    {
+                        return false;
+                    }
+                });
         }
 
         private IEnumerable<IWitsmlDataAdapter> GetDataAdapters<TObject>()

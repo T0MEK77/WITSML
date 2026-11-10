@@ -36,5 +36,6 @@ using System.Runtime.InteropServices;
 [assembly: Guid("93faae2f-13aa-46df-a94b-36155b51ebfa")]
 
 [assembly: InternalsVisibleTo("PDS.WITSMLstudio.Store.IntegrationTest")]
+[assembly: InternalsVisibleTo("PDS.WITSMLstudio.Store.Web")]
 [assembly: InternalsVisibleTo("PDS.WITSMLstudio.Store.MongoDb.IntegrationTest")]
 [assembly: InternalsVisibleTo("PDS.WITSMLstudio.UnitTest")]

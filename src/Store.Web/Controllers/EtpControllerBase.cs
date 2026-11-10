@@ -32,6 +32,7 @@ using System.Web.WebSockets;
 using Energistics.Etp.Common;
 using Energistics.Etp.Common.Datatypes;
 using PDS.WITSMLstudio.Framework;
+using PDS.WITSMLstudio.Store;
 using PDS.WITSMLstudio.Store.Configuration;
 using PDS.WITSMLstudio.Store.Data;
 using PDS.WITSMLstudio.Store.Providers;
@@ -218,6 +219,9 @@ namespace PDS.WITSMLstudio.Store.Controllers
             var headers = GetWebSocketHeaders(context.Headers, context.QueryString);
             using (var etpServer = CreateEtpServer(context.WebSocket, headers))
             {
+                // Bind the handshake-authenticated principal to this ETP session. Protocol
+                // callbacks may execute on socket worker threads with a different call context.
+                WitsmlOperationContext.SetAuthenticatedUser(etpServer, context.User);
                 etpServer.SupportedObjects = GetSupportedObjects();
                 await etpServer.HandleConnection(CancellationToken.None);
             }

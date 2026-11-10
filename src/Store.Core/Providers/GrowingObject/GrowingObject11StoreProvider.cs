@@ -24,9 +24,12 @@ using Energistics.Etp.Common;
 using Energistics.Etp.Common.Datatypes;
 using Energistics.Etp.Common.Datatypes.Object;
 using Energistics.Etp.v11.Protocol.GrowingObject;
+using PDS.WITSMLstudio;
 using PDS.WITSMLstudio.Data;
 using PDS.WITSMLstudio.Framework;
+using PDS.WITSMLstudio.Store.Data;
 using PDS.WITSMLstudio.Store.Data.GrowingObjects;
+using PDS.WITSMLstudio.Store.Data.Security;
 
 namespace PDS.WITSMLstudio.Store.Providers.GrowingObject
 {
@@ -69,6 +72,8 @@ namespace PDS.WITSMLstudio.Store.Providers.GrowingObject
 
             IDataObject dataObject;
 
+            if (!CheckObjectAccess(uri, AclAction.Read, header.MessageId)) return;
+
             try
             {
                 dataObject = dataAdapter.GetGrowingPart(Session.Adapter, uri, message.Uid);
@@ -103,6 +108,8 @@ namespace PDS.WITSMLstudio.Store.Providers.GrowingObject
 
             IList<IDataObject> dataObjects;
 
+            if (!CheckObjectAccess(uri, AclAction.Read, header.MessageId)) return;
+
             try
             {
                 dataObjects = dataAdapter.GetGrowingParts(Session.Adapter, uri, message.StartIndex.Item, message.EndIndex.Item);
@@ -135,6 +142,8 @@ namespace PDS.WITSMLstudio.Store.Providers.GrowingObject
             var dataAdapter = GetDataAdapterAndValidateUri(header.MessageId, message.Uri, out uri);
             if (dataAdapter == null) return;
 
+            if (!CheckObjectAccess(uri, AclAction.Update, header.MessageId)) return;
+
             try
             {
                 dataAdapter.PutGrowingPart(Session.Adapter, uri, message.ContentType, message.Data);
@@ -157,6 +166,8 @@ namespace PDS.WITSMLstudio.Store.Providers.GrowingObject
             EtpUri uri;
             var dataAdapter = GetDataAdapterAndValidateUri(header.MessageId, message.Uri, out uri);
             if (dataAdapter == null) return;
+
+            if (!CheckObjectAccess(uri, AclAction.Delete, header.MessageId)) return;
 
             try
             {
@@ -181,6 +192,8 @@ namespace PDS.WITSMLstudio.Store.Providers.GrowingObject
             var dataAdapter = GetDataAdapterAndValidateUri(header.MessageId, message.Uri, out uri);
             if (dataAdapter == null) return;
 
+            if (!CheckObjectAccess(uri, AclAction.Delete, header.MessageId)) return;
+
             try
             {
                 dataAdapter.DeleteGrowingParts(uri, message.StartIndex.Item, message.EndIndex.Item);
@@ -188,6 +201,21 @@ namespace PDS.WITSMLstudio.Store.Providers.GrowingObject
             catch (NotImplementedException)
             {
                 this.NotSupported(header.MessageId);
+            }
+        }
+
+        private bool CheckObjectAccess(EtpUri uri, AclAction action, long messageId)
+        {
+            try
+            {
+                var provider = Container.Resolve<IEtpDataProvider>(new ObjectName(uri.ObjectType, uri.Family, uri.GetDataSchemaVersion()));
+                provider.CheckObjectAccess(action, uri);
+                return true;
+            }
+            catch (WitsmlException exception)
+            {
+                ProtocolException((int)exception.ErrorCode, exception.Message, messageId);
+                return false;
             }
         }
 

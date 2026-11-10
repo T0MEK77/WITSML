@@ -19,10 +19,13 @@
 using System;
 using System.Collections.Generic;
 using System.ServiceModel;
+using System.Security.Principal;
 using System.Threading;
+using System.Runtime.CompilerServices;
 using System.Web;
 using System.Xml.Linq;
 using Energistics.DataAccess.Validation;
+using Energistics.Etp.Common;
 using Energistics.Etp.Common.Datatypes.Object;
 using Witsml141 = Energistics.DataAccess.WITSML141;
 using log4net;
@@ -39,6 +42,14 @@ namespace PDS.WITSMLstudio.Store
     public class WitsmlOperationContext : IExtension<OperationContext>
     {
         private static readonly ILog _log = LogManager.GetLogger(typeof(WitsmlOperationContext));
+
+        private const string AuthenticatedUserSlot = "PDS.WITSMLstudio.Store.WitsmlOperationContext.AuthenticatedUser";
+        private static readonly ConditionalWeakTable<IEtpSession, AuthenticatedSessionUser> SessionUsers = new ConditionalWeakTable<IEtpSession, AuthenticatedSessionUser>();
+
+        private sealed class AuthenticatedSessionUser
+        {
+            public string Username { get; set; }
+        }
 
         [ThreadStatic]
         private static WitsmlOperationContext _current;
@@ -92,13 +103,51 @@ namespace PDS.WITSMLstudio.Store
         {
             get
             {
-                var user = HttpContext.Current?.User?.Identity?.Name;
+                // Store only the authenticated username in LogicalCallContext. The operation
+                // context itself contains non-serializable request state and must remain thread-local.
+                var user = System.Runtime.Remoting.Messaging.CallContext.LogicalGetData(AuthenticatedUserSlot) as string;
+
+                if (string.IsNullOrWhiteSpace(user))
+                    user = HttpContext.Current?.User?.Identity?.Name;
 
                 if (string.IsNullOrWhiteSpace(user))
                     user = Thread.CurrentPrincipal?.Identity?.Name;
 
                 return string.IsNullOrWhiteSpace(user) ? "unknown" : user;
             }
+        }
+
+        /// <summary>
+        /// Captures the authenticated identity associated with an ETP WebSocket session.
+        /// Only an authenticated principal is accepted.
+        /// </summary>
+        internal void SetAuthenticatedUser(IPrincipal principal)
+        {
+            var identity = principal?.Identity;
+            System.Runtime.Remoting.Messaging.CallContext.LogicalSetData(
+                AuthenticatedUserSlot,
+                identity != null && identity.IsAuthenticated ? identity.Name : null);
+        }
+
+        /// <summary>
+        /// Associates an authenticated identity with a specific ETP session. WebSocket callbacks
+        /// may execute on worker threads where the handshake LogicalCallContext is unavailable.
+        /// </summary>
+        internal static void SetAuthenticatedUser(IEtpSession session, IPrincipal principal)
+        {
+            if (session == null) throw new ArgumentNullException(nameof(session));
+            var identity = principal?.Identity;
+            if (identity == null || !identity.IsAuthenticated || string.IsNullOrWhiteSpace(identity.Name)) return;
+            SessionUsers.GetValue(session, _ => new AuthenticatedSessionUser()).Username = identity.Name;
+        }
+
+        /// <summary>Gets the authenticated username associated with an ETP session.</summary>
+        internal static string GetAuthenticatedUser(IEtpSession session)
+        {
+            AuthenticatedSessionUser value;
+            return session != null && SessionUsers.TryGetValue(session, out value) && !string.IsNullOrWhiteSpace(value.Username)
+                ? value.Username
+                : "unknown";
         }
 
         /// <summary>

@@ -1,0 +1,98 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.ComponentModel.Composition;
+using MongoDB.Driver;
+using PDS.WITSMLstudio.Store.Data;
+using PDS.WITSMLstudio.Store.Data.Security;
+
+namespace PDS.WITSMLstudio.Store.Security
+{
+    /// <summary>Stores ACL rules in the configured WITSML MongoDB database.</summary>
+    [Export(typeof(IAclRuleStore))]
+    [PartCreationPolicy(CreationPolicy.Shared)]
+    public sealed class MongoDbAclRuleStore : IAclRuleStore
+    {
+        private const string CollectionName = "AclRules";
+        private readonly IDatabaseProvider _databaseProvider;
+
+        [ImportingConstructor]
+        public MongoDbAclRuleStore(IDatabaseProvider databaseProvider)
+        {
+            if (databaseProvider == null) throw new ArgumentNullException("databaseProvider");
+            _databaseProvider = databaseProvider;
+
+            AclRuleIndexManager.EnsureUniqueIndex(Collection);
+        }
+
+        private IMongoCollection<AclRule> Collection
+        {
+            get { return _databaseProvider.GetDatabase().GetCollection<AclRule>(CollectionName); }
+        }
+
+        public IList<AclRule> GetRules(IEnumerable<string> resourceIds)
+        {
+            if (resourceIds == null) throw new ArgumentNullException("resourceIds");
+            var ids = resourceIds.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToList();
+            if (ids.Count == 0) return new List<AclRule>();
+            return Collection.Find(Builders<AclRule>.Filter.In(x => x.ResourceId, ids)).ToList();
+        }
+
+        public void Save(AclRule rule)
+        {
+            if (rule == null) throw new ArgumentNullException("rule");
+            if (string.IsNullOrWhiteSpace(rule.Username) || string.IsNullOrWhiteSpace(rule.ResourceId))
+                throw new ArgumentException("Username and ResourceId are required.", "rule");
+
+            var filter = Builders<AclRule>.Filter.And(
+                Builders<AclRule>.Filter.Eq(x => x.Username, rule.Username),
+                Builders<AclRule>.Filter.Eq(x => x.ResourceId, rule.ResourceId),
+                Builders<AclRule>.Filter.Eq(x => x.ResourceType, rule.ResourceType),
+                Builders<AclRule>.Filter.Eq(x => x.Action, rule.Action));
+            var update = Builders<AclRule>.Update.Combine(
+                Builders<AclRule>.Update.Set(x => x.Username, rule.Username),
+                Builders<AclRule>.Update.Set(x => x.ResourceId, rule.ResourceId),
+                Builders<AclRule>.Update.Set(x => x.ResourceType, rule.ResourceType),
+                Builders<AclRule>.Update.Set(x => x.Action, rule.Action),
+                Builders<AclRule>.Update.Set(x => x.Effect, rule.Effect),
+                Builders<AclRule>.Update.Set(x => x.Inherit, rule.Inherit));
+
+            // A concurrent first-time upsert can lose a race against the unique
+            // composite index. Retry the update; if a concurrent Delete removed the
+            // winning row before that retry, repeat the upsert rather than failing
+            // an otherwise valid Save operation.
+            const int maxAttempts = 5;
+            for (var attempt = 0; attempt < maxAttempts; attempt++)
+            {
+                try
+                {
+                    Collection.UpdateOne(filter, update, new UpdateOptions { IsUpsert = true });
+                    return;
+                }
+                catch (MongoWriteException exception)
+                {
+                    if (exception.WriteError == null
+                        || exception.WriteError.Category != ServerErrorCategory.DuplicateKey)
+                        throw;
+
+                    var retryResult = Collection.UpdateOne(filter, update, new UpdateOptions { IsUpsert = false });
+                    if (retryResult.MatchedCount > 0)
+                        return;
+
+                    if (attempt == maxAttempts - 1)
+                        throw;
+                }
+            }
+        }
+
+        public void Delete(string username, string resourceId, AclResourceType resourceType, AclAction action)
+        {
+            var filter = Builders<AclRule>.Filter.And(
+                Builders<AclRule>.Filter.Eq(x => x.Username, username),
+                Builders<AclRule>.Filter.Eq(x => x.ResourceId, resourceId),
+                Builders<AclRule>.Filter.Eq(x => x.ResourceType, resourceType),
+                Builders<AclRule>.Filter.Eq(x => x.Action, action));
+            Collection.DeleteOne(filter);
+        }
+    }
+}

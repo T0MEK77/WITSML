@@ -22,6 +22,7 @@ using System.Linq;
 using log4net;
 using PDS.WITSMLstudio.Framework;
 using PDS.WITSMLstudio.Store.Configuration;
+using System;
 
 namespace PDS.WITSMLstudio.Store.Data.Security
 {
@@ -41,6 +42,10 @@ namespace PDS.WITSMLstudio.Store.Data.Security
         /// <value>The user authorization adapters.</value>
         [ImportMany]
         public List<IUserAuthorizationAdapter> UserAuthorizationAdapters { get; set; }
+
+        /// <summary>Gets or sets the optional persistent object ACL rule store.</summary>
+        [Import(AllowDefault = true)]
+        public IAclRuleStore AclRuleStore { get; set; }
 
         /// <summary>
         /// Verifies that the current user is authorized to execute the requested ETP action.
@@ -62,6 +67,63 @@ namespace PDS.WITSMLstudio.Store.Data.Security
             {
                 throw new WitsmlException(ErrorCodes.InsufficientOperationRights);
             }
+        }
+
+        /// <summary>
+        /// Enforces object ACL rules. An unconfigured hierarchy preserves legacy
+        /// endpoint authorization; once configured, absence of an Allow is denied.
+        /// </summary>
+        public void CheckObjectAccess(AclAction action, IEnumerable<AclResource> resourceHierarchy)
+        {
+            CheckObjectAccess(WitsmlOperationContext.Current.User, action, resourceHierarchy);
+        }
+
+        /// <summary>
+        /// Checks object access for an explicitly supplied authenticated user.
+        /// This overload is used by asynchronous notification delivery, where the
+        /// original request context is no longer available.
+        /// </summary>
+        public void CheckObjectAccess(string username, AclAction action, IEnumerable<AclResource> resourceHierarchy)
+        {
+            if (!WitsmlSettings.IsUserAuthorizationEnabled)
+                return;
+
+            // Never evaluate ACL using the placeholder identity returned when
+            // the HTTP host has not authenticated the request. In particular, a
+            // wildcard Allow must not grant access to an unauthenticated caller.
+            if (string.IsNullOrWhiteSpace(username) ||
+                string.Equals(username, "unknown", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new WitsmlException(ErrorCodes.InsufficientOperationRights);
+            }
+
+            // Only server-configured usernames bypass object ACL. Do not trust
+            // roles or administrator flags supplied by the ETP/SOAP client.
+            if (IsAclAdministrator(username))
+                return;
+
+            if (AclRuleStore == null)
+                throw new WitsmlException(ErrorCodes.InsufficientOperationRights);
+
+            if (resourceHierarchy == null)
+                throw new ArgumentNullException("resourceHierarchy");
+
+            var resources = resourceHierarchy.ToList();
+            var rules = AclRuleStore.GetRules(resources.Select(x => x.Id));
+            var decision = AclPolicyEvaluator.Evaluate(username, action, resources, rules);
+
+            if (decision.IsAclConfigured && !decision.IsAllowed)
+                throw new WitsmlException(ErrorCodes.InsufficientOperationRights);
+        }
+
+        private static bool IsAclAdministrator(string username)
+        {
+            if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(WitsmlSettings.AclAdministratorUsers))
+                return false;
+
+            return WitsmlSettings.AclAdministratorUsers
+                .Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries)
+                .Any(x => string.Equals(x.Trim(), username, StringComparison.OrdinalIgnoreCase));
         }
 
         /// <summary>

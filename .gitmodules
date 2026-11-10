@@ -1,8 +1,8 @@
 [submodule "ext/etp-devkit"]
 	path = ext/etp-devkit
-	url = ../etp-devkit
+	url = https://github.com/pds-technology/etp-devkit.git
 	branch = etp1.2
 [submodule "ext/devkit-c"]
 	path = ext/devkit-c
-	url = ../devkit-c
+	url = https://github.com/pds-technology/devkit-c.git
 	branch = refs/heads/master

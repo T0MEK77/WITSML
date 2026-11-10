@@ -28,6 +28,7 @@ using Energistics.Etp.Common.Datatypes;
 using log4net;
 using PDS.WITSMLstudio.Framework;
 using PDS.WITSMLstudio.Store.Configuration;
+using PDS.WITSMLstudio.Store.Data.Security;
 using PDS.WITSMLstudio.Store.Transactions;
 
 namespace PDS.WITSMLstudio.Store.Data
@@ -353,41 +354,74 @@ namespace PDS.WITSMLstudio.Store.Data
         /// <param name="uri">The URI.</param>
         protected virtual void DeleteAll(EtpUri uri)
         {
-            var adapters = new List<IWitsmlDataAdapter>();
+            // Build the complete cascade plan before deleting anything. Checking
+            // only immediate children is insufficient: a denied grandchild could
+            // otherwise stop a nested cascade after earlier siblings were removed.
+            var targets = new List<Tuple<IWitsmlDataAdapter, EtpUri>>();
+            CollectCascadeDeleteTargets(uri, targets);
 
-            if (uri.IsRelatedTo(EtpUris.Witsml200) || uri.IsRelatedTo(EtpUris.Eml210))
+            var authorization = Container.Resolve<IUserAuthorizationProvider>();
+            foreach (var target in targets)
             {
-                // Cascade delete not defined for WITSML 2.0 / ETP
-                return;
-            }
-            if (ObjectTypes.Well.EqualsIgnoreCase(uri.ObjectType))
-            {
-                adapters.Add(Container.Resolve<IWitsmlDataAdapter>(new ObjectName(ObjectTypes.Wellbore, uri.Family, uri.Version)));
-            }
-            else if (ObjectTypes.Wellbore.EqualsIgnoreCase(uri.ObjectType))
-            {
-                var exclude = new[] { ObjectTypes.Well, ObjectTypes.Wellbore, ObjectTypes.ChangeLog };
-
-                var type = OptionsIn.DataVersion.Version141.Equals(uri.Version)
-                    ? typeof(IWitsml141Configuration)
-                    : typeof(IWitsml131Configuration);
-
-                Container
-                    .ResolveAll(type)
-                    .Cast<IWitsmlDataAdapter>()
-                    .Where(x => !exclude.ContainsIgnoreCase(ObjectTypes.GetObjectType(x.DataObjectType)))
-                    .ForEach(adapters.Add);
+                authorization.CheckObjectAccess(AclAction.Delete, AclResourceHierarchy.FromUri(target.Item2));
             }
 
-            foreach (var adapter in adapters)
+            // Keep deletion semantics in the adapters; their own DeleteAll calls
+            // perform the nested deletes after the complete preflight succeeded.
+            foreach (var target in targets.Where(x => IsDirectChild(uri, x.Item2)))
             {
-                var dataObjects = adapter.GetAll(uri);
+                target.Item1.Delete(target.Item2);
+            }
+        }
 
-                foreach (var dataObject in dataObjects)
+        private void CollectCascadeDeleteTargets(EtpUri parentUri, IList<Tuple<IWitsmlDataAdapter, EtpUri>> targets)
+        {
+            foreach (var adapter in GetCascadeChildAdapters(parentUri))
+            {
+                var childUris = adapter.GetAll(parentUri)
+                    .Cast<object>()
+                    .Select(adapter.GetUri)
+                    .ToList();
+
+                foreach (var childUri in childUris)
                 {
-                    adapter.Delete(adapter.GetUri(dataObject));
+                    targets.Add(Tuple.Create(adapter, childUri));
+                    CollectCascadeDeleteTargets(childUri, targets);
                 }
             }
+        }
+
+        private IEnumerable<IWitsmlDataAdapter> GetCascadeChildAdapters(EtpUri uri)
+        {
+            if (uri.IsRelatedTo(EtpUris.Witsml200) || uri.IsRelatedTo(EtpUris.Eml210))
+                return Enumerable.Empty<IWitsmlDataAdapter>();
+
+            if (ObjectTypes.Well.EqualsIgnoreCase(uri.ObjectType))
+            {
+                return new[]
+                {
+                    Container.Resolve<IWitsmlDataAdapter>(
+                        new ObjectName(ObjectTypes.Wellbore, uri.Family, uri.Version))
+                };
+            }
+
+            if (!ObjectTypes.Wellbore.EqualsIgnoreCase(uri.ObjectType))
+                return Enumerable.Empty<IWitsmlDataAdapter>();
+
+            var exclude = new[] { ObjectTypes.Well, ObjectTypes.Wellbore, ObjectTypes.ChangeLog };
+            var type = OptionsIn.DataVersion.Version141.Equals(uri.Version)
+                ? typeof(IWitsml141Configuration)
+                : typeof(IWitsml131Configuration);
+
+            return Container.ResolveAll(type)
+                .Cast<IWitsmlDataAdapter>()
+                .Where(x => !exclude.ContainsIgnoreCase(ObjectTypes.GetObjectType(x.DataObjectType)))
+                .ToList();
+        }
+
+        private static bool IsDirectChild(EtpUri parentUri, EtpUri candidate)
+        {
+            return candidate != null && candidate.Parent.Equals(parentUri);
         }
     }
 }

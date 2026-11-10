@@ -1,0 +1,500 @@
+//-----------------------------------------------------------------------
+// WITSMLstudio Store
+// Integration tests for MongoDB ACL rule persistence.
+//-----------------------------------------------------------------------
+
+using System;
+using System.Linq;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
+using MongoDB.Driver;
+using PDS.WITSMLstudio.Store.Data;
+using PDS.WITSMLstudio.Store.Data.Security;
+using PDS.WITSMLstudio.Store.Security;
+
+namespace PDS.WITSMLstudio.Store.Security
+{
+    [TestClass]
+    public class AclRuleStoreTests
+    {
+        private IDatabaseProvider _databaseProvider;
+        private MongoDbAclRuleStore _store;
+        private string _resourceId;
+        private string _indexTestCollectionName;
+
+        public TestContext TestContext { get; set; }
+
+        [TestInitialize]
+        public void TestSetUp()
+        {
+            var devKit = new DevKit141Aspect(TestContext);
+            _databaseProvider = devKit.Container.Resolve<IDatabaseProvider>();
+            _store = new MongoDbAclRuleStore(_databaseProvider);
+            _resourceId = "acl-test-" + Guid.NewGuid().ToString("N");
+            _indexTestCollectionName = "AclRuleIndexTest_" + Guid.NewGuid().ToString("N");
+        }
+
+        [TestCleanup]
+        public void TestCleanUp()
+        {
+            if (_databaseProvider == null || string.IsNullOrEmpty(_resourceId))
+                return;
+
+            _databaseProvider.GetDatabase()
+                .GetCollection<AclRule>("AclRules")
+                .DeleteMany(Builders<AclRule>.Filter.Eq(x => x.ResourceId, _resourceId));
+
+            if (!string.IsNullOrEmpty(_indexTestCollectionName))
+                _databaseProvider.GetDatabase().DropCollection(_indexTestCollectionName);
+        }
+
+
+        [TestMethod]
+        [ExpectedException(typeof(ArgumentNullException))]
+        public void MongoDbAclRuleStore_Save_Null_Rule_Throws_Validation_Exception()
+        {
+            _store.Save(null);
+        }
+
+        [TestMethod]
+        [ExpectedException(typeof(ArgumentException))]
+        public void MongoDbAclRuleStore_Save_Blank_Username_Throws_Validation_Exception()
+        {
+            _store.Save(new AclRule
+            {
+                Username = " ",
+                ResourceId = _resourceId,
+                ResourceType = AclResourceType.Well,
+                Action = AclAction.Read,
+                Effect = AclEffect.Allow
+            });
+        }
+
+        [TestMethod]
+        [ExpectedException(typeof(ArgumentException))]
+        public void MongoDbAclRuleStore_Save_Blank_Resource_Id_Throws_Validation_Exception()
+        {
+            _store.Save(new AclRule
+            {
+                Username = "acl-test-user",
+                ResourceId = " ",
+                ResourceType = AclResourceType.Well,
+                Action = AclAction.Read,
+                Effect = AclEffect.Allow
+            });
+        }
+
+        [TestMethod]
+        [ExpectedException(typeof(ArgumentNullException))]
+        public void MongoDbAclRuleStore_GetRules_Null_Resource_Ids_Throws_Validation_Exception()
+        {
+            _store.GetRules(null);
+        }
+
+        [TestMethod]
+        public void AclRuleIndexManager_Empty_Collection_Creates_Unique_Index_Idempotently()
+        {
+            var collection = _databaseProvider.GetDatabase()
+                .GetCollection<AclRule>(_indexTestCollectionName);
+
+            AclRuleIndexManager.EnsureUniqueIndex(collection);
+            AclRuleIndexManager.EnsureUniqueIndex(collection);
+
+            var indexes = collection.Indexes.List().ToList();
+            var aclIndex = indexes.Single(x => x["name"].AsString == AclRuleIndexManager.IndexName);
+
+            Assert.IsTrue(aclIndex["unique"].AsBoolean);
+            Assert.AreEqual(4, aclIndex["key"].AsBsonDocument.ElementCount);
+        }
+
+        [TestMethod]
+        public void AclRuleIndexManager_Duplicate_Keys_Are_Reported_Without_Deleting_Data_Or_Creating_Index()
+        {
+            var collection = _databaseProvider.GetDatabase()
+                .GetCollection<AclRule>(_indexTestCollectionName);
+            var rule = new AclRule
+            {
+                Username = "acl-duplicate-user",
+                ResourceId = "acl-duplicate-resource",
+                ResourceType = AclResourceType.Well,
+                Action = AclAction.Read,
+                Effect = AclEffect.Allow
+            };
+
+            collection.InsertMany(new[]
+            {
+                rule,
+                new AclRule
+                {
+                    Username = rule.Username,
+                    ResourceId = rule.ResourceId,
+                    ResourceType = rule.ResourceType,
+                    Action = rule.Action,
+                    Effect = AclEffect.Deny
+                }
+            });
+
+            var duplicates = AclRuleIndexManager.FindDuplicateKeys(collection);
+            Assert.AreEqual(1, duplicates.Count);
+            Assert.AreEqual(2, duplicates[0]["Count"].AsInt32);
+            Assert.AreEqual(2, collection.CountDocuments(FilterDefinition<AclRule>.Empty));
+
+            try
+            {
+                AclRuleIndexManager.EnsureUniqueIndex(collection);
+                Assert.Fail("A duplicate ACL key group must prevent unique-index creation.");
+            }
+            catch (InvalidOperationException exception)
+            {
+                StringAssert.Contains(exception.Message, "1 duplicate key group");
+            }
+
+            Assert.AreEqual(2, collection.CountDocuments(FilterDefinition<AclRule>.Empty));
+            Assert.AreEqual(1, collection.Indexes.List().ToList().Count);
+        }
+
+        [TestMethod]
+        public void AclRuleIndexManager_Different_Inherit_Values_Are_Reported_As_Duplicate_Identity()
+        {
+            var collection = _databaseProvider.GetDatabase()
+                .GetCollection<AclRule>(_indexTestCollectionName);
+            var rule = new AclRule
+            {
+                Username = "acl-inherit-user",
+                ResourceId = "acl-inherit-resource",
+                ResourceType = AclResourceType.Well,
+                Action = AclAction.Read,
+                Effect = AclEffect.Allow,
+                Inherit = false
+            };
+
+            collection.InsertMany(new[]
+            {
+                rule,
+                new AclRule
+                {
+                    Username = rule.Username,
+                    ResourceId = rule.ResourceId,
+                    ResourceType = rule.ResourceType,
+                    Action = rule.Action,
+                    Effect = rule.Effect,
+                    Inherit = true
+                }
+            });
+
+            var duplicates = AclRuleIndexManager.FindDuplicateKeys(collection);
+
+            Assert.AreEqual(1, duplicates.Count);
+            Assert.AreEqual(2, duplicates[0]["Count"].AsInt32);
+            Assert.AreEqual(2, collection.CountDocuments(FilterDefinition<AclRule>.Empty));
+        }
+
+        [TestMethod]
+        public void AclRuleIndexManager_Different_Actions_Create_Different_Unique_Identities()
+        {
+            var collection = _databaseProvider.GetDatabase()
+                .GetCollection<AclRule>(_indexTestCollectionName);
+            var rule = new AclRule
+            {
+                Username = "acl-actions-user",
+                ResourceId = "acl-actions-resource",
+                ResourceType = AclResourceType.Well,
+                Action = AclAction.Read,
+                Effect = AclEffect.Allow
+            };
+
+            collection.InsertMany(new[]
+            {
+                rule,
+                new AclRule
+                {
+                    Username = rule.Username,
+                    ResourceId = rule.ResourceId,
+                    ResourceType = rule.ResourceType,
+                    Action = AclAction.Update,
+                    Effect = AclEffect.Deny
+                }
+            });
+
+            Assert.AreEqual(0, AclRuleIndexManager.FindDuplicateKeys(collection).Count);
+
+            AclRuleIndexManager.EnsureUniqueIndex(collection);
+
+            Assert.AreEqual(2, collection.CountDocuments(FilterDefinition<AclRule>.Empty));
+            Assert.AreEqual(2, collection.Indexes.List().ToList().Count);
+        }
+
+        [TestMethod]
+        public void AclRuleIndexManager_Concurrent_Unique_Index_Creation_Is_Idempotent()
+        {
+            var collection = _databaseProvider.GetDatabase()
+                .GetCollection<AclRule>(_indexTestCollectionName);
+
+            System.Threading.Tasks.Parallel.For(0, 8, index =>
+            {
+                AclRuleIndexManager.EnsureUniqueIndex(collection);
+            });
+
+            var indexes = collection.Indexes.List().ToList();
+            var aclIndex = indexes.Single(x => x["name"].AsString == AclRuleIndexManager.IndexName);
+
+            Assert.IsTrue(aclIndex["unique"].AsBoolean);
+            Assert.AreEqual(2, indexes.Count);
+        }
+
+        [TestMethod]
+        public void AclRuleIndexManager_Existing_Unique_Data_Is_Preserved_When_Index_Is_Created()
+        {
+            var collection = _databaseProvider.GetDatabase()
+                .GetCollection<AclRule>(_indexTestCollectionName);
+            collection.InsertOne(new AclRule
+            {
+                Username = "acl-existing-user",
+                ResourceId = "acl-existing-resource",
+                ResourceType = AclResourceType.Wellbore,
+                Action = AclAction.Update,
+                Effect = AclEffect.Deny,
+                Inherit = true
+            });
+
+            AclRuleIndexManager.EnsureUniqueIndex(collection);
+
+            Assert.AreEqual(1, collection.CountDocuments(FilterDefinition<AclRule>.Empty));
+            Assert.AreEqual(0, AclRuleIndexManager.FindDuplicateKeys(collection).Count);
+            Assert.AreEqual(2, collection.Indexes.List().ToList().Count);
+        }
+
+        [TestMethod]
+        public void MongoDbAclRuleStore_Concurrent_Save_Does_Not_Create_Duplicate_Rules()
+        {
+            System.Threading.Tasks.Parallel.For(0, 8, index =>
+            {
+                _store.Save(new AclRule
+                {
+                    Username = "acl-concurrent-user",
+                    ResourceId = _resourceId,
+                    ResourceType = AclResourceType.Well,
+                    Action = AclAction.Read,
+                    Effect = index % 2 == 0 ? AclEffect.Allow : AclEffect.Deny,
+                    Inherit = index % 2 == 0
+                });
+            });
+
+            var result = _store.GetRules(new[] { _resourceId });
+
+            Assert.AreEqual(1, result.Count);
+            Assert.AreEqual("acl-concurrent-user", result[0].Username);
+        }
+
+        [TestMethod]
+        public void MongoDbAclRuleStore_Save_And_GetRules_Persist_Rule()
+        {
+            var rule = new AclRule
+            {
+                Username = "acl-test-user",
+                ResourceId = _resourceId,
+                ResourceType = AclResourceType.Well,
+                Action = AclAction.Read,
+                Effect = AclEffect.Allow,
+                Inherit = true
+            };
+
+            _store.Save(rule);
+
+            var result = _store.GetRules(new[] { _resourceId });
+
+            Assert.AreEqual(1, result.Count);
+            Assert.AreEqual(rule.Username, result[0].Username);
+            Assert.AreEqual(rule.ResourceId, result[0].ResourceId);
+            Assert.AreEqual(rule.ResourceType, result[0].ResourceType);
+            Assert.AreEqual(rule.Action, result[0].Action);
+            Assert.AreEqual(rule.Effect, result[0].Effect);
+            Assert.IsTrue(result[0].Inherit);
+        }
+
+        [TestMethod]
+        public void MongoDbAclRuleStore_Save_Updates_Existing_Composite_Key()
+        {
+            var rule = new AclRule
+            {
+                Username = "acl-test-user",
+                ResourceId = _resourceId,
+                ResourceType = AclResourceType.Wellbore,
+                Action = AclAction.Update,
+                Effect = AclEffect.Allow,
+                Inherit = false
+            };
+
+            _store.Save(rule);
+            rule.Effect = AclEffect.Deny;
+            rule.Inherit = true;
+            _store.Save(rule);
+
+            var result = _store.GetRules(new[] { _resourceId });
+
+            Assert.AreEqual(1, result.Count);
+            Assert.AreEqual(AclEffect.Deny, result[0].Effect);
+            Assert.IsTrue(result[0].Inherit);
+        }
+
+        [TestMethod]
+        public void MongoDbAclRuleStore_GetRules_Ignores_Blank_And_Duplicate_Resource_Ids()
+        {
+            _store.Save(new AclRule
+            {
+                Username = "acl-test-user",
+                ResourceId = _resourceId,
+                ResourceType = AclResourceType.DataObject,
+                Action = AclAction.Delete,
+                Effect = AclEffect.Deny
+            });
+
+            var result = _store.GetRules(new[] { _resourceId, null, string.Empty, " ", _resourceId });
+            var empty = _store.GetRules(new string[0]);
+
+            Assert.AreEqual(1, result.Count);
+            Assert.AreEqual(0, empty.Count);
+        }
+
+        [TestMethod]
+        public void MongoDbAclRuleStore_Delete_Removes_Only_Matching_Action()
+        {
+            _store.Save(new AclRule
+            {
+                Username = "acl-test-user",
+                ResourceId = _resourceId,
+                ResourceType = AclResourceType.Well,
+                Action = AclAction.Read,
+                Effect = AclEffect.Allow
+            });
+            _store.Save(new AclRule
+            {
+                Username = "acl-test-user",
+                ResourceId = _resourceId,
+                ResourceType = AclResourceType.Well,
+                Action = AclAction.Update,
+                Effect = AclEffect.Allow
+            });
+
+            _store.Delete("acl-test-user", _resourceId, AclResourceType.Well, AclAction.Read);
+
+            var result = _store.GetRules(new[] { _resourceId });
+
+            Assert.AreEqual(1, result.Count);
+            Assert.AreEqual(AclAction.Update, result[0].Action);
+        }
+
+        [TestMethod]
+        public void MongoDbAclRuleStore_New_Instance_Can_Read_Persisted_Rule()
+        {
+            var rule = new AclRule
+            {
+                Username = "acl-restart-user",
+                ResourceId = _resourceId,
+                ResourceType = AclResourceType.Well,
+                Action = AclAction.Read,
+                Effect = AclEffect.Allow,
+                Inherit = true
+            };
+
+            _store.Save(rule);
+
+            // Recreate the store object and verify that the rule is read from MongoDB,
+            // rather than from state held by the original store instance.
+            // Use a fresh MongoClient and store instance to exercise database-backed
+            // recovery without relying on the original client's in-memory state.
+            var restartedProvider = new TestDatabaseProvider(
+                new MongoClient(_databaseProvider.ConnectionString),
+                _databaseProvider.DatabaseName);
+            var newStore = new MongoDbAclRuleStore(restartedProvider);
+            var result = newStore.GetRules(new[] { _resourceId });
+
+            Assert.AreEqual(1, result.Count);
+            Assert.AreEqual(rule.Username, result[0].Username);
+            Assert.AreEqual(rule.Effect, result[0].Effect);
+            Assert.IsTrue(result[0].Inherit);
+        }
+
+        [TestMethod]
+        public void MongoDbAclRuleStore_Concurrent_Save_And_Delete_Does_Not_Create_Duplicate_Rules()
+        {
+            var username = "acl-save-delete-user";
+            var rule = new AclRule
+            {
+                Username = username,
+                ResourceId = _resourceId,
+                ResourceType = AclResourceType.Well,
+                Action = AclAction.Read,
+                Effect = AclEffect.Allow,
+                Inherit = true
+            };
+
+            System.Threading.Tasks.Parallel.For(0, 64, index =>
+            {
+                if (index % 2 == 0)
+                    _store.Save(rule);
+                else
+                    _store.Delete(username, _resourceId, AclResourceType.Well, AclAction.Read);
+            });
+
+            var result = _store.GetRules(new[] { _resourceId });
+            Assert.IsTrue(result.Count <= 1);
+            Assert.IsTrue(result.All(x => x.Username == username));
+        }
+
+        [TestMethod]
+        [ExpectedException(typeof(TimeoutException))]
+        public void MongoDbAclRuleStore_Throws_When_MongoDb_Is_Unavailable()
+        {
+            var settings = new MongoClientSettings
+            {
+                Server = new MongoServerAddress("127.0.0.1", 1),
+                ConnectTimeout = TimeSpan.FromMilliseconds(500),
+                ServerSelectionTimeout = TimeSpan.FromSeconds(2)
+            };
+            var provider = new TestDatabaseProvider(new MongoClient(settings), "AclUnavailableTest");
+
+            // Store initialization verifies the unique index against MongoDB.
+            // An unavailable database must fail closed instead of pretending ACL
+            // persistence was initialized successfully.
+            new MongoDbAclRuleStore(provider);
+        }
+
+        private sealed class TestDatabaseProvider : IDatabaseProvider
+        {
+            private readonly IMongoClient _client;
+
+            private readonly string _databaseName;
+
+            public TestDatabaseProvider(IMongoClient client, string databaseName)
+            {
+                _client = client;
+                _databaseName = databaseName;
+            }
+
+            public IMongoClient Client
+            {
+                get { return _client; }
+            }
+
+            public string ConnectionString
+            {
+                get { return "mongodb://" + _client.Settings.Server; }
+            }
+
+            public string DatabaseName
+            {
+                get { return _databaseName; }
+            }
+
+            public IMongoDatabase GetDatabase()
+            {
+                return _client.GetDatabase(DatabaseName);
+            }
+
+            public void SetConnectionString(string connectionString)
+            {
+                throw new NotSupportedException();
+            }
+        }
+    }
+}

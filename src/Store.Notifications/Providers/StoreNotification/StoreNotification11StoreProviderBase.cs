@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.Composition;
 using System.Linq;
 using Energistics.DataAccess;
 using Witsml200 = Energistics.DataAccess.WITSML200;
@@ -26,6 +27,9 @@ using Energistics.Etp.v11.Datatypes.Object;
 using Energistics.Etp.v11.Protocol.StoreNotification;
 using Newtonsoft.Json.Linq;
 using PDS.WITSMLstudio.Framework;
+using PDS.WITSMLstudio.Store;
+using PDS.WITSMLstudio.Store.Data;
+using PDS.WITSMLstudio.Store.Data.Security;
 
 namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
 {
@@ -37,6 +41,8 @@ namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
     {
         private readonly Dictionary<string, IMessageHeader> _headers;
         private readonly List<NotificationRequest> _requests;
+        private readonly Dictionary<string, string> _subscribers;
+        private readonly object _syncRoot = new object();
 
         /// <summary>
         /// Initializes a new instance of the <see cref="StoreNotification11StoreProviderBase"/> class.
@@ -45,7 +51,16 @@ namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
         {
             _headers = new Dictionary<string, IMessageHeader>();
             _requests = new List<NotificationRequest>();
+            _subscribers = new Dictionary<string, string>();
         }
+
+        /// <summary>Authorization service used to filter asynchronous notifications.</summary>
+        [Import]
+        public IUserAuthorizationProvider AuthorizationProvider { get; set; }
+
+        /// <summary>MEF container used to resolve the canonical WITSML data provider.</summary>
+        [Import]
+        public IContainer Container { get; set; }
 
         /// <summary>
         /// Handles the notification request.
@@ -54,6 +69,17 @@ namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
         /// <param name="request">The request.</param>
         protected override void HandleNotificationRequest(IMessageHeader header, NotificationRequest request)
         {
+            lock (_syncRoot)
+            {
+            try
+            {
+                CheckSubscriptionReadAccess(request.Request.Uri);
+            }
+            catch (WitsmlException exception)
+            {
+                ProtocolException((int)exception.ErrorCode, exception.Message, header.MessageId);
+                return;
+            }
             base.HandleNotificationRequest(header, request);
             EnsureConnection();
 
@@ -63,8 +89,18 @@ namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
             }
             else
             {
+                var username = WitsmlOperationContext.Current.User;
+                if (!StoreNotificationSubscriptionOwnerRegistry.TryRegister(GetSubscriptionRegistryKey(request.Request.Uuid), username))
+                {
+                    ProtocolException((int)ErrorCodes.InsufficientOperationRights, "The subscription identifier is already owned by another user.", header.MessageId);
+                    return;
+                }
+
                 _headers[request.Request.Uuid] = header;
+                _subscribers[request.Request.Uuid] = username;
                 _requests.Add(request);
+            }
+        
             }
         }
 
@@ -75,9 +111,27 @@ namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
         /// <param name="request">The request.</param>
         protected override void HandleCancelNotification(IMessageHeader header, CancelNotification request)
         {
-            base.HandleCancelNotification(header, request);
-
+            lock (_syncRoot)
+            {
             var message = _requests.FirstOrDefault(x => x.Request.Uuid.EqualsIgnoreCase(request.RequestUuid));
+            var registryKey = GetSubscriptionRegistryKey(request.RequestUuid);
+            string registeredOwner;
+            var hasRegisteredOwner = StoreNotificationSubscriptionOwnerRegistry.TryGetOwner(registryKey, out registeredOwner);
+            if (message != null || hasRegisteredOwner)
+            {
+                var owner = message != null ? _subscribers[message.Request.Uuid] : registeredOwner;
+                try
+                {
+                    StoreNotificationSubscriptionOwnerRegistry.EnsureOwner(owner, WitsmlOperationContext.Current.User);
+                }
+                catch (WitsmlException exception)
+                {
+                    ProtocolException((int)exception.ErrorCode, exception.Message, header.MessageId);
+                    return;
+                }
+            }
+
+            base.HandleCancelNotification(header, request);
 
             if (message == null)
             {
@@ -87,7 +141,24 @@ namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
             {
                 _requests.Remove(message);
                 _headers.Remove(message.Request.Uuid);
+                StoreNotificationSubscriptionOwnerRegistry.Remove(registryKey, _subscribers[message.Request.Uuid]);
+                _subscribers.Remove(message.Request.Uuid);
             }
+        
+            }
+        }
+
+        private static string GetSubscriptionRegistryKey(string requestUuid)
+        {
+            return "ETP11:" + requestUuid;
+        }
+
+private void CheckSubscriptionReadAccess(string uri)
+        {
+            var etpUri = new EtpUri(uri);
+            var provider = Container.Resolve<IEtpDataProvider>(
+                new ObjectName(etpUri.ObjectType, etpUri.Family, etpUri.Version));
+            provider.CheckObjectAccess(WitsmlOperationContext.Current.User, AclAction.Read, etpUri);
         }
 
         /// <summary>
@@ -100,6 +171,16 @@ namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
         {
             if (disposing)
             {
+                lock (_syncRoot)
+                {
+                    foreach (var subscriber in _subscribers)
+                        StoreNotificationSubscriptionOwnerRegistry.Remove(GetSubscriptionRegistryKey(subscriber.Key), subscriber.Value);
+
+                    _requests.Clear();
+                    _headers.Clear();
+                    _subscribers.Clear();
+                }
+
                 Disconnect();
             }
 
@@ -132,20 +213,59 @@ namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
 
         protected virtual void OnNotify(Func<IMessageHeader, ObjectChange, long> action, string uri, object dataObject, DateTime dateTime, ObjectChangeTypes changeType)
         {
-            var request = _requests.FirstOrDefault(x => x.Request.Uri.EqualsIgnoreCase(uri));
-            if (request == null) return;
-
-            IMessageHeader header;
-            if (!_headers.TryGetValue(request.Request.Uuid, out header)) return;
-
-            var etpUri = new EtpUri(uri);
-
-            action(header, new ObjectChange
+            lock (_syncRoot)
             {
-                ChangeType = changeType,
-                ChangeTime = dateTime.ToUnixTimeMicroseconds(),
-                DataObject = GetDataObject(etpUri.ObjectType, etpUri.Family, etpUri.Version, dataObject, request.Request.IncludeObjectData)
-            });
+                var requests = _requests
+                    .Where(x => x.Request.Uri.EqualsIgnoreCase(uri))
+                    .ToList();
+
+                foreach (var request in requests)
+                {
+                    IMessageHeader header;
+                    string username;
+                    if (!_headers.TryGetValue(request.Request.Uuid, out header)
+                        || !_subscribers.TryGetValue(request.Request.Uuid, out username))
+                        continue;
+
+                    var etpUri = new EtpUri(uri);
+
+                    try
+                    {
+                        var provider = Container.Resolve<IEtpDataProvider>(
+                            new ObjectName(etpUri.ObjectType, etpUri.Family, etpUri.Version));
+                        provider.CheckObjectAccess(username, AclAction.Read, etpUri, ParseNotificationObject(etpUri, dataObject));
+                    }
+                    catch (WitsmlException)
+                    {
+                        continue;
+                    }
+
+                    action(header, new ObjectChange
+                    {
+                        ChangeType = changeType,
+                        ChangeTime = dateTime.ToUnixTimeMicroseconds(),
+                        DataObject = GetDataObject(etpUri.ObjectType, etpUri.Family, etpUri.Version, dataObject, request.Request.IncludeObjectData)
+                    });
+                }
+            }
+        }
+
+        private static object ParseNotificationObject(EtpUri uri, object dataObject)
+        {
+            var jObject = dataObject as JObject;
+            if (jObject == null && !(dataObject is string))
+                return dataObject;
+
+            var type = ObjectTypes.GetObjectGroupType(uri.ObjectType, uri.Family, uri.Version) ??
+                       ObjectTypes.GetObjectType(uri.ObjectType, uri.Family, uri.Version);
+            var parsed = jObject != null
+                ? jObject.ToObject(type)
+                : WitsmlParser.Parse(type, WitsmlParser.Parse(dataObject.ToString()).Root);
+
+            var collection = parsed as IEnergisticsCollection;
+            return collection == null
+                ? parsed
+                : collection.Items.OfType<IDataObject>().FirstOrDefault();
         }
 
         protected virtual DataObject GetDataObject(string objectType, string family, string version, object dataObject, bool includeObjectData)
