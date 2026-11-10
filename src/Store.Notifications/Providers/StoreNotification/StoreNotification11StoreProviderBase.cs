@@ -122,7 +122,7 @@ namespace PDS.WITSMLstudio.Store.Providers.StoreNotification
                 var owner = message != null ? _subscribers[message.Request.Uuid] : registeredOwner;
                 try
                 {
-                    EnsureSubscriptionOwner(owner);
+                    StoreNotificationSubscriptionOwnerRegistry.EnsureOwner(owner, WitsmlOperationContext.Current.User);
                 }
                 catch (WitsmlException exception)
                 {
@@ -159,12 +159,6 @@ private void CheckSubscriptionReadAccess(string uri)
             var provider = Container.Resolve<IEtpDataProvider>(
                 new ObjectName(etpUri.ObjectType, etpUri.Family, etpUri.Version));
             provider.CheckObjectAccess(WitsmlOperationContext.Current.User, AclAction.Read, etpUri);
-        }
-
-        private void EnsureSubscriptionOwner(string owner)
-        {
-            if (!string.Equals(owner, WitsmlOperationContext.Current.User, StringComparison.OrdinalIgnoreCase))
-                throw new WitsmlException(ErrorCodes.InsufficientOperationRights);
         }
 
         /// <summary>
