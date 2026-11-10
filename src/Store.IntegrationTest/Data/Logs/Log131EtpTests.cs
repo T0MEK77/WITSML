@@ -83,6 +83,92 @@ namespace PDS.WITSMLstudio.Store.Data.Logs
         }
 
         [TestMethod]
+        public async Task Log131_GrowingObjectGet_Allows_Wildcard_Read_Allow()
+        {
+            AddParents();
+            DevKit.AddAndAssert<LogList, Log>(Log);
+
+            var aclRuleStore = DevKit.Container.Resolve<IAclRuleStore>();
+            var authorizationProvider = DevKit.Container.Resolve<IUserAuthorizationProvider>() as UserAuthorizationProvider;
+            Assert.IsNotNull(authorizationProvider);
+            var originalAuthorizationEnabled = WitsmlSettings.IsUserAuthorizationEnabled;
+            var originalAdapters = authorizationProvider.UserAuthorizationAdapters;
+            var allowRule = new AclRule
+            {
+                Username = "*",
+                ResourceId = Log.Uid,
+                ResourceType = AclResourceType.DataObject,
+                Action = AclAction.Read,
+                Effect = AclEffect.Allow
+            };
+
+            try
+            {
+                authorizationProvider.UserAuthorizationAdapters = new List<IUserAuthorizationAdapter> { new AllowEndpointAuthorizationAdapter() };
+                WitsmlSettings.IsUserAuthorizationEnabled = true;
+                aclRuleStore.Save(allowRule);
+                await RequestSessionAndAssert(10, Protocols.ChannelStreaming, Protocols.Discovery, Protocols.Store, Protocols.GrowingObject, Protocols.StoreNotification);
+
+                var handler = _client.Handler<IGrowingObjectCustomer>();
+                var onProtocolException = HandleAsync<IProtocolException>(x => handler.OnProtocolException += x);
+                handler.GrowingObjectGet(Log.GetUri().ToString(), "missing-part");
+
+                var response = await onProtocolException;
+                Assert.IsNotNull(response?.Message);
+                Assert.AreEqual((int)Energistics.Etp.EtpErrorCodes.NotFound, response.Message.ErrorCode);
+            }
+            finally
+            {
+                aclRuleStore.Delete("*", Log.Uid, AclResourceType.DataObject, AclAction.Read);
+                WitsmlSettings.IsUserAuthorizationEnabled = originalAuthorizationEnabled;
+                authorizationProvider.UserAuthorizationAdapters = originalAdapters;
+            }
+        }
+
+        [TestMethod]
+        public async Task Log131_Etp12GetPart_Allows_Wildcard_Read_Allow()
+        {
+            AddParents();
+            DevKit.AddAndAssert<LogList, Log>(Log);
+
+            var aclRuleStore = DevKit.Container.Resolve<IAclRuleStore>();
+            var authorizationProvider = DevKit.Container.Resolve<IUserAuthorizationProvider>() as UserAuthorizationProvider;
+            Assert.IsNotNull(authorizationProvider);
+            var originalAuthorizationEnabled = WitsmlSettings.IsUserAuthorizationEnabled;
+            var originalAdapters = authorizationProvider.UserAuthorizationAdapters;
+            var allowRule = new AclRule
+            {
+                Username = "*",
+                ResourceId = Log.Uid,
+                ResourceType = AclResourceType.DataObject,
+                Action = AclAction.Read,
+                Effect = AclEffect.Allow
+            };
+
+            try
+            {
+                authorizationProvider.UserAuthorizationAdapters = new List<IUserAuthorizationAdapter> { new AllowEndpointAuthorizationAdapter() };
+                WitsmlSettings.IsUserAuthorizationEnabled = true;
+                aclRuleStore.Save(allowRule);
+                await RequestEtp12SessionAndAssert(_client);
+
+                var handler = _client.Handler<GrowingObject12Customer>();
+                var onProtocolException = HandleAsync<IProtocolException>(x => handler.OnProtocolException += x);
+                handler.GetPart(Log.GetUri().ToString(), "missing-part");
+
+                var response = await onProtocolException;
+                Assert.IsNotNull(response?.Message);
+                Assert.AreEqual((int)Energistics.Etp.EtpErrorCodes.NotFound, response.Message.ErrorCode);
+            }
+            finally
+            {
+                aclRuleStore.Delete("*", Log.Uid, AclResourceType.DataObject, AclAction.Read);
+                WitsmlSettings.IsUserAuthorizationEnabled = originalAuthorizationEnabled;
+                authorizationProvider.UserAuthorizationAdapters = originalAdapters;
+            }
+        }
+
+        [TestMethod]
         public async Task Log131_GrowingObjectGetRange_Denies_Explicit_Read_Deny()
         {
             await AssertGrowingObjectDeniedAsync(AclAction.Read,
