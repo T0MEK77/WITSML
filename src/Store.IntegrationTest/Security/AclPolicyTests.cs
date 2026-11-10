@@ -282,6 +282,42 @@ namespace PDS.WITSMLstudio.Store.Security
         }
 
         [TestMethod]
+        public void UserAuthorizationProvider_Denies_When_Username_Is_Unknown_Even_With_Wildcard_Allow()
+        {
+            var originalEnabled = WitsmlSettings.IsUserAuthorizationEnabled;
+            var originalAdministrators = WitsmlSettings.AclAdministratorUsers;
+
+            try
+            {
+                WitsmlSettings.IsUserAuthorizationEnabled = true;
+                WitsmlSettings.AclAdministratorUsers = string.Empty;
+
+                var provider = new UserAuthorizationProvider
+                {
+                    AclRuleStore = new TestAclRuleStore(
+                        new AclRule
+                        {
+                            Username = "*",
+                            ResourceId = "object-1",
+                            ResourceType = AclResourceType.DataObject,
+                            Action = AclAction.Read,
+                            Effect = AclEffect.Allow
+                        })
+                };
+
+                var exception = AssertAccessDenied(() =>
+                    provider.CheckObjectAccess("unknown", AclAction.Read, Hierarchy()));
+
+                Assert.AreEqual(ErrorCodes.InsufficientOperationRights, exception.ErrorCode);
+            }
+            finally
+            {
+                WitsmlSettings.IsUserAuthorizationEnabled = originalEnabled;
+                WitsmlSettings.AclAdministratorUsers = originalAdministrators;
+            }
+        }
+
+        [TestMethod]
         public void UserAuthorizationProvider_Denies_When_Username_Is_Empty()
         {
             var originalEnabled = WitsmlSettings.IsUserAuthorizationEnabled;
