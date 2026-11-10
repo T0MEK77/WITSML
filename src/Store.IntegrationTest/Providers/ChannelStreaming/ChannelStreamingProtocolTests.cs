@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Principal;
 using System.Threading.Tasks;
 using System.Xml.Linq;
 using Energistics.DataAccess.WITSML141.ComponentSchemas;
@@ -263,6 +264,13 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
         {
             public bool IsAuthorized(string username, RequestContext request, WitsmlEndpointTypes endpointType)
             {
+                // The self-hosted ETP test server has no ASP.NET HttpContext.
+                // Establish the authenticated test identity on the server request
+                // thread so object ACL checks do not see the "unknown" placeholder.
+                Thread.CurrentPrincipal = new GenericPrincipal(
+                    new GenericIdentity(TestSettings.Username),
+                    new string[0]);
+
                 return true;
             }
         }
