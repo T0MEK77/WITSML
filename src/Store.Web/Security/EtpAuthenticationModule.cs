@@ -68,6 +68,9 @@ namespace PDS.WITSMLstudio.Store.Security
 
             try
             {
+                if (string.IsNullOrWhiteSpace(_secret) || Encoding.UTF8.GetByteCount(_secret) < 32)
+                    throw new InvalidOperationException("The jwt.secret setting must contain at least 32 UTF-8 bytes and must be supplied by protected deployment configuration.");
+
                 var securityKey = new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(Encoding.UTF8.GetBytes(_secret));
                 var signingCredentials = new Microsoft.IdentityModel.Tokens.SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256Signature);
 
