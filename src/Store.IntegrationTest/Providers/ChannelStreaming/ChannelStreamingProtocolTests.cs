@@ -144,6 +144,17 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
                     new AllowEndpointAuthorizationAdapter()
                 };
                 WitsmlSettings.IsUserAuthorizationEnabled = true;
+                // Seed an explicit baseline grant so this test is independent of ACL rules
+                // left by other users/tests in the shared integration database.
+                aclRuleStore.Save(new AclRule
+                {
+                    Username = username,
+                    ResourceId = TestUris.LogMd.ObjectId,
+                    ResourceType = AclResourceType.DataObject,
+                    Action = AclAction.Read,
+                    Effect = AclEffect.Allow,
+                    Inherit = true
+                });
 
                 await RequestSessionAndAssert(10, Protocols.ChannelStreaming, Protocols.Discovery, Protocols.Store, Protocols.StoreNotification, Protocols.GrowingObject);
 
@@ -207,6 +218,17 @@ namespace PDS.WITSMLstudio.Store.Providers.ChannelStreaming
                     new AllowEndpointAuthorizationAdapter()
                 };
                 WitsmlSettings.IsUserAuthorizationEnabled = true;
+                // Seed an explicit baseline grant so this test is independent of ACL rules
+                // left by other users/tests in the shared integration database.
+                aclRuleStore.Save(new AclRule
+                {
+                    Username = username,
+                    ResourceId = TestUris.LogMd.ObjectId,
+                    ResourceType = AclResourceType.DataObject,
+                    Action = AclAction.Read,
+                    Effect = AclEffect.Allow,
+                    Inherit = true
+                });
 
                 await RequestSessionAndAssert(10, Protocols.ChannelStreaming, Protocols.Discovery, Protocols.Store, Protocols.StoreNotification, Protocols.GrowingObject);
 
